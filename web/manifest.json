@@ -1,10 +1,10 @@
 {
     "name": "저두잇",
     "short_name": "저두잇",
-    "start_url": ".",
+    "start_url": "./",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
+    "background_color": "#3E7C6B",
+    "theme_color": "#3E7C6B",
     "description": "저두잇 - 작은 미션을 지인과 함께하는 앱",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
