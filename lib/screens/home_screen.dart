@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../models/mission.dart';
+import '../models/mission_record.dart';
+import '../services/account_service.dart';
 import '../services/record_repository.dart';
 import 'design_compare_screen.dart';
 import 'mission_screen.dart';
 import 'records_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.repository});
+  const HomeScreen({super.key, required this.repository, this.account});
 
   final RecordRepository repository;
+  final AccountService? account;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -24,7 +27,43 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    widget.account?.addListener(_onAccountChanged);
     _refreshCount();
+  }
+
+  @override
+  void dispose() {
+    widget.account?.removeListener(_onAccountChanged);
+    super.dispose();
+  }
+
+  void _onAccountChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _signIn() async {
+    try {
+      await widget.account!.signInWithGoogle();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인을 시작하지 못했어요. 다시 시도해 주세요')),
+      );
+    }
+  }
+
+  /// 기기 저장이 끝난 기록을 계정에도 올린다. 로그인 전이면 초안으로 보관된다.
+  Future<String> _saveToAccount(MissionRecord record) async {
+    final account = widget.account;
+    if (account == null) return '기록을 이 기기에 저장했어요';
+    try {
+      final uploaded = await account.saveRecord(record);
+      return uploaded
+          ? '기록을 이 기기와 내 계정에 저장했어요'
+          : '기록을 이 기기에 저장했어요. 30분 안에 로그인하면 계정에도 저장돼요';
+    } catch (_) {
+      return '기록을 이 기기에 저장했어요. 계정 저장은 실패했어요';
+    }
   }
 
   Future<void> _refreshCount() async {
@@ -48,18 +87,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openMission(Mission mission) async {
-    final saved = await Navigator.of(context).push<bool>(
+    final saved = await Navigator.of(context).push<MissionRecord>(
       MaterialPageRoute(
         builder: (_) =>
             MissionScreen(mission: mission, repository: widget.repository),
       ),
     );
     await _refreshCount();
-    if (saved == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('기록을 이 기기에 저장했어요')),
-      );
-    }
+    if (saved == null) return;
+    final message = await _saveToAccount(saved);
+    if (!mounted) return;
+    final offerSignIn = widget.account != null && !widget.account!.signedIn;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: offerSignIn
+            ? SnackBarAction(label: 'Google 로그인', onPressed: _signIn)
+            : null,
+      ),
+    );
   }
 
   Future<void> _openRecords() async {
@@ -137,16 +183,19 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 12),
           ],
           const SizedBox(height: 8),
-          Card(
-            color: theme.colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                '기록은 이 기기·브라우저에만 저장돼요.',
-                style: theme.textTheme.bodySmall,
+          if (widget.account == null)
+            Card(
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  '기록은 이 기기·브라우저에만 저장돼요.',
+                  style: theme.textTheme.bodySmall,
+                ),
               ),
-            ),
-          ),
+            )
+          else
+            _AccountCard(account: widget.account!, onSignIn: _signIn),
         ],
       ),
     );
@@ -181,6 +230,51 @@ class _MissionCard extends StatelessWidget {
               )
             : const Icon(Icons.chevron_right),
         onTap: onTap,
+      ),
+    );
+  }
+}
+
+class _AccountCard extends StatelessWidget {
+  const _AccountCard({required this.account, required this.onSignIn});
+
+  final AccountService account;
+  final VoidCallback onSignIn;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: account.signedIn
+            ? Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${account.email ?? 'Google 계정'}로 로그인했어요.\n기록이 내 계정에도 저장돼요.',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  TextButton(onPressed: account.signOut, child: const Text('로그아웃')),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '로그인하면 기록을 계정에 저장하고 친구와 방을 만들 수 있어요.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: onSignIn,
+                    icon: const Icon(Icons.login),
+                    label: const Text('Google로 로그인'),
+                  ),
+                ],
+              ),
       ),
     );
   }

@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';
+import 'services/account_service.dart';
 import 'services/record_repository.dart';
 
 /// 저두잇 앱 루트.
 /// [repository]를 주입할 수 있게 해 테스트에서 저장소를 교체하기 쉽게 한다.
 class JeoduitApp extends StatelessWidget {
-  const JeoduitApp({super.key, this.repository});
+  const JeoduitApp({super.key, this.repository, this.account});
 
   final RecordRepository? repository;
+
+  /// null이면 로그인·서버 저장 없이 기기 기록만 사용한다.
+  final AccountService? account;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +39,7 @@ class JeoduitApp extends StatelessWidget {
           ),
         ),
       ),
-      home: HomeScreen(repository: repo),
+      home: HomeScreen(repository: repo, account: account),
     );
   }
 }
