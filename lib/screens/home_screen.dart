@@ -3,16 +3,22 @@ import 'package:flutter/material.dart';
 import '../models/mission.dart';
 import '../models/mission_record.dart';
 import '../services/account_service.dart';
+import '../services/draft_store.dart';
+import '../services/room_service.dart';
 import '../services/record_repository.dart';
 import 'design_compare_screen.dart';
 import 'mission_screen.dart';
 import 'records_screen.dart';
+import 'room_entry_screen.dart';
+import 'room_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.repository, this.account});
+  const HomeScreen({super.key, required this.repository, this.account, this.rooms, this.drafts});
 
   final RecordRepository repository;
   final AccountService? account;
+  final RoomService? rooms;
+  final DraftStore? drafts;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -50,6 +56,50 @@ class _HomeScreenState extends State<HomeScreen> {
         const SnackBar(content: Text('로그인을 시작하지 못했어요. 다시 시도해 주세요')),
       );
     }
+  }
+
+  /// 함께하기: 로그인 → (참여 중인 방이 없으면) 방 만들기·참가 → 방 화면.
+  Future<void> _openChallenge() async {
+    final account = widget.account!;
+    final rooms = widget.rooms!;
+    if (!account.signedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('친구와 함께하려면 먼저 로그인해 주세요'),
+          action: SnackBarAction(label: 'Google 로그인', onPressed: _signIn),
+        ),
+      );
+      return;
+    }
+    String? roomId;
+    try {
+      roomId = await rooms.myRoomId();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('방 정보를 불러오지 못했어요. 다시 시도해 주세요')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    if (roomId == null) {
+      roomId = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          builder: (_) => RoomEntryScreen(rooms: rooms, inviteCode: widget.drafts?.invite),
+        ),
+      );
+      if (roomId == null || !mounted) return;
+      widget.drafts?.clearInvite();
+    } else if (widget.drafts?.invite != null) {
+      widget.drafts!.clearInvite();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이미 참여 중인 방이 있어 그 방을 열었어요')),
+      );
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => RoomScreen(rooms: rooms, roomId: roomId!)),
+    );
+    if (mounted) setState(() {});
   }
 
   /// 기기 저장이 끝난 기록을 계정에도 올린다. 로그인 전이면 초안으로 보관된다.
@@ -175,6 +225,22 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+          if (widget.account != null && widget.rooms != null) ...[
+            const SizedBox(height: 12),
+            Card(
+              color: theme.colorScheme.secondaryContainer,
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                leading: const Icon(Icons.groups),
+                title: Text(widget.drafts?.invite != null ? '초대받은 방이 있어요' : '친구와 3일 정리 챌린지'),
+                subtitle: Text(widget.drafts?.invite != null
+                    ? '로그인하고 참가해 보세요'
+                    : '함께 정리할수록 공동 책상이 정돈돼요'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _openChallenge,
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           Text('오늘 할 미션', style: theme.textTheme.titleLarge),
           const SizedBox(height: 12),

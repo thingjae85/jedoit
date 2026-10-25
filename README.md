@@ -1,7 +1,13 @@
 # 저두잇
 
 작은 개인 미션을 지인 챌린지로 연결하고, 참여에 따라 공동 책상이 정돈되는 Flutter Web 앱입니다.
-현재는 1주차 버전으로, 미션을 선택하고 완료 체크·메모를 기기에 기록합니다.
+현재 구현된 것:
+- 개인 미션 4개 체험, 완료 체크·메모를 기기에 기록 (1주차)
+- Google 로그인, 로그인 전 체험 기록을 30분 보관했다가 계정에 저장
+- 방 만들기·초대 QR/링크(`?invite=`)·참가, 방 전용 닉네임, 시작 확정
+- 3일 사진 인증(1280px JPEG 재인코딩, 위치정보 제거), 진행도 H/T와 공동 목표 G를 숫자로 표시
+
+다음: 공동 책상 화면, 사진 삭제·인증 취소, 계정 삭제 요청, Android APK.
 
 - 웹에서 보기: https://thingjae85.github.io/jedoit/ (GitHub Pages, `main`에 푸시하면 자동 배포)
 - 설계 문서: [docs/저두잇_설계수정안_v2.md](docs/저두잇_설계수정안_v2.md)
@@ -52,11 +58,16 @@ Android 실행에는 Android SDK와 연결된 기기 또는 에뮬레이터가 �
 웹 주소나 포트가 달라지면 별도 저장 공간으로 처리됩니다. 브라우저 데이터를 지우면 기록이 사라질 수 있습니다.
 타이머는 실행 중 화면에서 사용하는 보조 기능이며, 앱 종료 후 복원이나 백그라운드 알림은 지원하지 않습니다.
 
+## Supabase 설정
+`supabase/migrations/`의 SQL을 번호 순서대로 Supabase SQL Editor에서 실행합니다.
+앱에는 publishable 키만 들어갑니다(`lib/config.dart`). service_role 키와 DB 비밀번호는 저장소에 넣지 않습니다.
+
 ## 검증 상태
-2026-10-24 Flutter 3.47.8 (Dart 3.13.7, Linux)에서 확인했습니다.
+2026-10-25 Flutter 3.47.8 (Dart 3.13.7, Linux)에서 확인했습니다.
 - `flutter analyze`: 오류 없음, const 권장 안내(info) 3건
-- `flutter test`: 12개 테스트 모두 통과
+- `flutter test`: 26개 테스트 모두 통과 (서버는 가짜 구현으로 대체)
 - `flutter build web`: 성공
+- SQL: 로컬 PostgreSQL 16에서 기획서 예시(4명 중 1명 이탈 시 T=10, G=7) 확인. 실제 Supabase에서의 로그인·업로드는 아직 확인 전
 
 PC Chrome과 iPhone Safari의 실제 동작, Android APK는 아직 확인하지 않았습니다.
 
