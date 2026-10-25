@@ -8,7 +8,7 @@ import '../services/record_repository.dart';
 import '../utils/format.dart';
 
 /// 개인 미션 실행 화면: 시작 → 실제 활동(타이머) → 완료 체크·메모 → 저장.
-/// 저장에 성공하면 true를 반환하며 닫힌다.
+/// 저장에 성공하면 저장한 기록을 반환하며 닫힌다.
 class MissionScreen extends StatefulWidget {
   const MissionScreen({
     super.key,
@@ -90,7 +90,7 @@ class _MissionScreenState extends State<MissionScreen> {
     }
     if (!mounted) return;
     _timer?.cancel();
-    Navigator.of(context).pop(true);
+    Navigator.of(context).pop(record);
   }
 
   @override
