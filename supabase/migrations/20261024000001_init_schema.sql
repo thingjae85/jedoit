@@ -1,7 +1,8 @@
 -- 저두잇 초기 스키마 (설계수정안 v2 기준)
 -- 시간 계산은 모두 KST(Asia/Seoul) 날짜 기준
 
-create extension if not exists pgcrypto;
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 
 -- KST 날짜 계산
 create or replace function public.kst_date(ts timestamptz)
@@ -11,7 +12,7 @@ $$;
 
 -- 혼동 문자(I, L, O, 0, 1)를 뺀 8자리 초대 코드
 create or replace function public.gen_invite_code()
-returns text language plpgsql volatile as $$
+returns text language plpgsql volatile set search_path = public, extensions as $$
 declare
   alphabet constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   bytes bytea := gen_random_bytes(8);
