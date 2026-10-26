@@ -160,6 +160,7 @@ class _MissionScreenState extends State<MissionScreen> {
               decoration: const InputDecoration(
                 labelText: '메모 (선택)',
                 hintText: '어땠는지 한 줄 남겨 보세요',
+                border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 8),
