@@ -94,7 +94,7 @@ void main() {
   });
 
   // 6
-  testWidgets('홈 화면에 미션 4개가 보이고 마이 탭에 로컬 저장 안내가 있다', (tester) async {
+  testWidgets('홈 화면에 미션 4개와 로컬 저장 안내가 보인다', (tester) async {
     _useTallScreen(tester);
     await tester.pumpWidget(JeoduitApp(repository: LocalRecordRepository()));
     await tester.pumpAndSettle();
@@ -102,11 +102,8 @@ void main() {
     for (final m in kMissions) {
       expect(find.text(m.title), findsOneWidget);
     }
-    expect(find.text('오늘 0번 완료'), findsOneWidget);
-
-    await tester.tap(find.text('마이'));
-    await tester.pumpAndSettle();
     expect(find.textContaining('이 기기·브라우저에만 저장'), findsOneWidget);
+    expect(find.text('오늘 0번 완료'), findsOneWidget);
   });
 
   // 7
@@ -154,14 +151,12 @@ void main() {
   testWidgets('기록 삭제는 확인창을 거치며 취소하면 남고 삭제하면 지워진다', (tester) async {
     _useTallScreen(tester);
     final repo = LocalRecordRepository();
-    final now = DateTime.now();
-    await repo.add(_record('a', 'water', now));
-    await repo.add(_record('b', 'cleanup', now, memo: '정리함'));
+    await repo.add(_record('a', 'water', DateTime(2026, 10, 12, 9)));
+    await repo.add(_record('b', 'cleanup', DateTime(2026, 10, 13, 9), memo: '정리함'));
 
     await tester.pumpWidget(JeoduitApp(repository: repo));
     await tester.pumpAndSettle();
-    // 기록 탭은 오늘 날짜가 선택된 달력으로 열린다.
-    await tester.tap(find.text('기록'));
+    await tester.tap(find.byIcon(Icons.history));
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.delete_outline), findsNWidgets(2));
 
@@ -180,30 +175,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.delete_outline), findsOneWidget);
     expect((await repo.loadAll()).length, 1);
-  });
-
-  testWidgets('기록 달력은 고른 날의 기록만 보여 주고 달을 넘길 수 있다', (tester) async {
-    _useTallScreen(tester);
-    final now = DateTime.now();
-    final lastMonth = DateTime(now.year, now.month - 1, 15, 9);
-    final repo = LocalRecordRepository();
-    await repo.add(_record('old', 'reading', lastMonth, memo: '지난달 기록'));
-    await repo.add(_record('new', 'water', now));
-
-    await tester.pumpWidget(JeoduitApp(repository: repo));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('기록'));
-    await tester.pumpAndSettle();
-    expect(find.text('${now.year}년 ${now.month}월'), findsWidgets);
-    expect(find.text('물 한 잔 마시기'), findsOneWidget);
-    expect(find.text('지난달 기록'), findsNothing);
-
-    await tester.tap(find.byTooltip('이전 달'));
-    await tester.pumpAndSettle();
-    expect(find.text('${lastMonth.year}년 ${lastMonth.month}월'), findsOneWidget);
-    await tester.tap(find.text('15').first);
-    await tester.pumpAndSettle();
-    expect(find.text('지난달 기록'), findsOneWidget);
   });
   testWidgets('오늘 집계는 어제 기록을 제외하고 같은 미션의 반복도 센다', (tester) async {
     _useTallScreen(tester);

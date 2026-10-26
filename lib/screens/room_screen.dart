@@ -5,10 +5,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../models/room.dart';
 import '../services/room_service.dart';
-import '../theme.dart';
 import '../utils/format.dart';
 import '../utils/photo.dart';
-import '../widgets/jd_widgets.dart';
 
 /// 초대 링크: 앱 주소에 `?invite=코드`를 붙인다. OAuth의 `code` 파라미터와 겹치지 않는다.
 String inviteLink(Uri base, String code) => Uri(
@@ -18,16 +16,6 @@ String inviteLink(Uri base, String code) => Uri(
       path: base.path,
       queryParameters: {'invite': code},
     ).toString();
-
-/// 방 상태를 한 줄 제목으로. 홈의 챌린지 카드에서도 쓴다.
-String roomStatusTitle(RoomStatus status) => switch (status) {
-      RoomStatus.recruiting => '친구를 기다리고 있어요',
-      RoomStatus.scheduled => '시작을 기다리고 있어요',
-      RoomStatus.active => '함께 정리하는 중',
-      RoomStatus.finished => '챌린지가 끝났어요',
-      RoomStatus.cancelled => '취소된 방이에요',
-      RoomStatus.expired => '모집 시간이 끝났어요',
-    };
 
 /// 방 화면: 모집(초대 QR) → 예약 → 3일 인증 → 종료 결과.
 /// 공동 책상 그림은 4단계에서 붙이고, 지금은 진행도를 숫자로 보여 준다.
@@ -150,93 +138,63 @@ class _RoomScreenState extends State<RoomScreen> {
                   : const CircularProgressIndicator(),
             )
           : RefreshIndicator(onRefresh: _load, child: _body(context, summary)),
-      bottomNavigationBar: summary?.statusAt(widget.now()) == RoomStatus.active
-          ? SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: JdColors.together,
-                    minimumSize: const Size.fromHeight(56),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                  ),
-                  onPressed: _busy ? null : _openCheckIn,
-                  icon: const Icon(Icons.photo_camera_outlined),
-                  label: const Text('오늘 정리 인증하기'),
-                ),
-              ),
-            )
-          : null,
     );
   }
 
   Widget _body(BuildContext context, RoomSummary s) {
+    final theme = Theme.of(context);
     final now = widget.now();
     final status = s.statusAt(now);
     final me = _members.where((m) => m.isMe).firstOrNull;
-    final showChecks = status != RoomStatus.recruiting;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      padding: const EdgeInsets.all(16),
       children: [
-        Text(roomStatusTitle(status),
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+        Text(_statusTitle(status), style: theme.textTheme.headlineSmall),
         const SizedBox(height: 4),
-        Text(_statusDetail(s, status), style: const TextStyle(fontSize: 14, color: JdColors.subtle)),
-        const SizedBox(height: 18),
+        Text(_statusDetail(s, status), style: theme.textTheme.bodyMedium),
+        const SizedBox(height: 16),
         if (status == RoomStatus.recruiting) _InviteCard(code: s.inviteCode, link: inviteLink(Uri.base, s.inviteCode)),
         if (status == RoomStatus.active || status == RoomStatus.finished) _ProgressCard(summary: s),
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            Text('참가자 ${_members.length}명', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-            const Spacer(),
-            if (showChecks) const Text('3일 인증', style: TextStyle(fontSize: 12, color: JdColors.faint)),
-          ],
-        ),
-        const SizedBox(height: 8),
-        for (final (i, m) in _members.indexed)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              children: [
-                FriendAvatar(name: m.nickname, index: i, size: 44),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('${m.displayName}${m.isMe ? ' (나)' : ''}', style: const TextStyle(fontSize: 15)),
-                      Text(
-                        '${m.isHost ? '방장' : '참가자'}${showChecks ? ' · 인증 ${m.checkins}회' : ''}',
-                        style: const TextStyle(fontSize: 12, color: JdColors.faint),
-                      ),
-                    ],
-                  ),
-                ),
-                if (showChecks)
-                  for (var d = 0; d < 3; d++) ...[
-                    const SizedBox(width: 6),
-                    CheckSquare(checked: d < m.checkins, color: JdColors.togetherFill, size: 30),
-                  ],
-              ],
-            ),
+        if (status == RoomStatus.active) ...[
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _busy ? null : _openCheckIn,
+            icon: const Icon(Icons.photo_camera),
+            label: const Text('오늘 정리 인증하기'),
           ),
-        const SizedBox(height: 16),
+        ],
+        const SizedBox(height: 20),
+        Text('참가자 ${_members.length}명', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        for (final m in _members)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: CircleAvatar(child: Text(m.nickname.characters.first)),
+            title: Text('${m.displayName}${m.isMe ? ' (나)' : ''}'),
+            subtitle: Text(m.isHost ? '방장' : '참가자'),
+            trailing: status == RoomStatus.recruiting ? null : Text('인증 ${m.checkins}회'),
+          ),
+        const SizedBox(height: 12),
         if (status == RoomStatus.recruiting && s.isHost)
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: JdColors.together),
             onPressed: _busy || _members.length < 2 ? null : _confirmStart,
             child: Text(_members.length < 2 ? '2명 이상 모이면 시작할 수 있어요' : '이 인원으로 시작 확정'),
           ),
         if (status != RoomStatus.finished && me != null)
-          TextButton(
-            onPressed: _busy ? null : _leave,
-            child: const Text('방 나가기', style: TextStyle(color: JdColors.subtle)),
-          ),
+          TextButton(onPressed: _busy ? null : _leave, child: const Text('방 나가기')),
       ],
     );
   }
+
+  String _statusTitle(RoomStatus status) => switch (status) {
+        RoomStatus.recruiting => '친구를 기다리고 있어요',
+        RoomStatus.scheduled => '시작을 기다리고 있어요',
+        RoomStatus.active => '함께 정리하는 중',
+        RoomStatus.finished => '챌린지가 끝났어요',
+        RoomStatus.cancelled => '취소된 방이에요',
+        RoomStatus.expired => '모집 시간이 끝났어요',
+      };
 
   String _statusDetail(RoomSummary s, RoomStatus status) => switch (status) {
         RoomStatus.recruiting =>
@@ -258,36 +216,36 @@ class _InviteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: JdColors.togetherTint, borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        children: [
-          const CategoryChip.together(label: '친구 초대'),
-          const SizedBox(height: 12),
-          const Text('친구가 카메라로 찍으면 바로 참가 화면이 열려요',
-              textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Color(0xFF4A5056))),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-            child: QrImageView(key: const Key('inviteQr'), data: link, size: 190),
-          ),
-          const SizedBox(height: 14),
-          SelectableText(code, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 4)),
-          const SizedBox(height: 10),
-          FilledButton.tonalIcon(
-            style: FilledButton.styleFrom(backgroundColor: JdColors.togetherChip, foregroundColor: JdColors.togetherText),
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: link));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('초대 링크를 복사했어요')));
-              }
-            },
-            icon: const Icon(Icons.link),
-            label: const Text('초대 링크 복사'),
-          ),
-        ],
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Text('친구가 카메라로 찍으면 바로 참가 화면이 열려요', style: theme.textTheme.bodyMedium),
+            const SizedBox(height: 12),
+            ColoredBox(
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: QrImageView(key: const Key('inviteQr'), data: link, size: 200),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SelectableText(code, style: theme.textTheme.headlineSmall?.copyWith(letterSpacing: 4)),
+            const SizedBox(height: 8),
+            FilledButton.tonalIcon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: link));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('초대 링크를 복사했어요')));
+                }
+              },
+              icon: const Icon(Icons.link),
+              label: const Text('초대 링크 복사'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -300,43 +258,33 @@ class _ProgressCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final s = summary;
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: JdColors.togetherTint, borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('공동 책상 · 정리된 요소',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
-              const Spacer(),
-              if (s.goal != null) Text('목표 ${s.goal}개', style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text('${s.earned} / ${s.totalElements}',
-              key: const Key('progressText'),
-              style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800, height: 1.1)),
-          const SizedBox(height: 12),
-          if (s.totalElements > 0) ElementBar(earned: s.earned, total: s.totalElements, goal: s.goal),
-          const SizedBox(height: 12),
-          Text(
-            s.goalReachedAt != null
-                ? '공동 목표 ${s.goal}회 달성! 배지를 받았어요'
-                : '공동 목표 ${s.goal}회까지 ${(s.goal ?? 0) - s.earned}회 남았어요',
-            style: const TextStyle(fontSize: 14, color: Color(0xFF4A5056)),
-          ),
-          if (s.startCount != null && s.activeCount < s.startCount!)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text('참가자가 나가서 목표와 책상 요소를 조정했어요. 이미 정리한 요소는 그대로예요.',
-                  style: Theme.of(context).textTheme.bodySmall),
+    final total = s.totalElements == 0 ? 1 : s.totalElements;
+    return Card(
+      color: theme.colorScheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('정리된 요소', style: theme.textTheme.titleMedium),
+            Text('${s.earned} / ${s.totalElements}', key: const Key('progressText'), style: theme.textTheme.displaySmall),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: (s.earned / total).clamp(0, 1), minHeight: 10),
+            const SizedBox(height: 12),
+            Text(
+              s.goalReachedAt != null
+                  ? '공동 목표 ${s.goal}회 달성! 배지를 받았어요'
+                  : '공동 목표 ${s.goal}회까지 ${(s.goal ?? 0) - s.earned}회 남았어요',
             ),
-          const SizedBox(height: 4),
-          Text('현재 유효 인증 ${s.validCount}회', style: const TextStyle(fontSize: 12, color: JdColors.faint)),
-        ],
+            if (s.startCount != null && s.activeCount < s.startCount!)
+              Text('참가자가 나가서 목표와 책상 요소를 조정했어요. 이미 정리한 요소는 그대로예요.',
+                  style: theme.textTheme.bodySmall),
+            const SizedBox(height: 4),
+            Text('현재 유효 인증 ${s.validCount}회', style: theme.textTheme.bodySmall),
+          ],
+        ),
       ),
     );
   }
@@ -425,8 +373,9 @@ class _CheckInScreenState extends State<CheckInScreen> {
           ),
           const SizedBox(height: 12),
           Card(
+            color: theme.colorScheme.surfaceContainerHighest,
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(12),
               child: Text(
                 '· 이 방의 현재 참가자에게 공유돼요\n'
                 '· 서버에 저장돼요 (위치정보는 지우고 올려요)\n'
@@ -448,7 +397,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
             controller: _memo,
             enabled: !_busy,
             maxLength: 200,
-            decoration: const InputDecoration(labelText: '메모 (선택)'),
+            decoration: const InputDecoration(labelText: '메모 (선택)', border: OutlineInputBorder()),
           ),
           if (_error != null) Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
           const SizedBox(height: 8),

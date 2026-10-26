@@ -5,7 +5,6 @@ import 'services/account_service.dart';
 import 'services/draft_store.dart';
 import 'services/room_service.dart';
 import 'services/record_repository.dart';
-import 'theme.dart';
 
 /// 저두잇 앱 루트.
 /// [repository]를 주입할 수 있게 해 테스트에서 저장소를 교체하기 쉽게 한다.
@@ -25,9 +24,18 @@ class JeoduitApp extends StatelessWidget {
     return MaterialApp(
       title: '저두잇',
       debugShowCheckedModeBanner: false,
-      theme: buildTheme(),
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3E7C6B)),
+        scaffoldBackgroundColor: const Color(0xFFF6F8F5),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFFF6F8F5),
+          centerTitle: false,
+        ),
+        inputDecorationTheme: const InputDecorationTheme(filled: true),
+      ),
       builder: (context, child) => ColoredBox(
-        color: const Color(0xFFF2F3F5),
+        color: const Color(0xFFE8EEE8),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 640),
