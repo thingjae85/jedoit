@@ -109,7 +109,6 @@ void main() {
     final account = _FakeAccount(drafts);
     await tester.pumpWidget(JeoduitApp(account: account));
     await tester.pumpAndSettle();
-    expect(find.text('Google로 로그인'), findsOneWidget);
 
     await tester.tap(find.text('물 한 잔 마시기'));
     await tester.pumpAndSettle();
@@ -124,6 +123,8 @@ void main() {
     expect(drafts.pendingDrafts(), hasLength(1));
     expect(account.uploaded, isEmpty);
 
+    await tester.tap(find.text('마이'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Google로 로그인'));
     await tester.pumpAndSettle();
     expect(account.uploaded, hasLength(1));
