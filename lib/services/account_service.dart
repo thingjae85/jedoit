@@ -18,6 +18,9 @@ abstract class AccountService extends ChangeNotifier {
 
   /// 로그인 직후 보관된 초안을 서버에 올린다. 올린 개수를 반환한다.
   Future<int> syncDrafts();
+
+  /// 계정 삭제를 접수하고 처리 예정일(접수 후 7일 이내)을 반환한다.
+  Future<DateTime> requestDeletion();
 }
 
 class SupabaseAccountService extends AccountService {
@@ -77,6 +80,13 @@ class SupabaseAccountService extends AccountService {
       count++;
     }
     return count;
+  }
+
+  @override
+  Future<DateTime> requestDeletion() async {
+    final due = await Supabase.instance.client.rpc('request_account_deletion') as String;
+    await signOut();
+    return DateTime.parse(due);
   }
 
   Future<void> _upload(MissionRecord record) {

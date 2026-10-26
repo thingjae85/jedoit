@@ -5,6 +5,7 @@ import '../models/mission_record.dart';
 import '../services/account_service.dart';
 import '../services/draft_store.dart';
 import '../services/room_service.dart';
+import '../utils/format.dart';
 import '../services/record_repository.dart';
 import 'design_compare_screen.dart';
 import 'mission_screen.dart';
@@ -100,6 +101,41 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(builder: (_) => RoomScreen(rooms: rooms, roomId: roomId!)),
     );
     if (mounted) setState(() {});
+  }
+
+  Future<void> _requestDeletion() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('계정 삭제를 요청할까요?'),
+        content: const Text(
+          '참여 중인 방에서 바로 나가고, 내 인증 사진은 지금부터 아무도 볼 수 없어요. '
+          '이미 정리된 책상 요소는 방에 남아요. 사진·기록·계정은 7일 안에 실제로 삭제돼요.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('삭제 요청')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final due = await widget.account!.requestDeletion();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('삭제 요청을 접수했어요'),
+          content: Text('접수일: ${formatDateTime(DateTime.now())}\n처리 예정일: ${formatDateTime(due.toLocal())}까지'),
+          actions: [FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('확인'))],
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('삭제 요청을 보내지 못했어요. 다시 시도해 주세요')),
+      );
+    }
   }
 
   /// 기기 저장이 끝난 기록을 계정에도 올린다. 로그인 전이면 초안으로 보관된다.
@@ -261,7 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             )
           else
-            _AccountCard(account: widget.account!, onSignIn: _signIn),
+            _AccountCard(account: widget.account!, onSignIn: _signIn, onDelete: _requestDeletion),
         ],
       ),
     );
@@ -302,10 +338,11 @@ class _MissionCard extends StatelessWidget {
 }
 
 class _AccountCard extends StatelessWidget {
-  const _AccountCard({required this.account, required this.onSignIn});
+  const _AccountCard({required this.account, required this.onSignIn, required this.onDelete});
 
   final AccountService account;
   final VoidCallback onSignIn;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -323,7 +360,14 @@ class _AccountCard extends StatelessWidget {
                       style: theme.textTheme.bodySmall,
                     ),
                   ),
-                  TextButton(onPressed: account.signOut, child: const Text('로그아웃')),
+                  PopupMenuButton<String>(
+                    tooltip: '계정',
+                    onSelected: (v) => v == 'out' ? account.signOut() : onDelete(),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'out', child: Text('로그아웃')),
+                      PopupMenuItem(value: 'delete', child: Text('계정 삭제 요청')),
+                    ],
+                  ),
                 ],
               )
             : Column(

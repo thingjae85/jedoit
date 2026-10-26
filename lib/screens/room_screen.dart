@@ -7,6 +7,7 @@ import '../models/room.dart';
 import '../services/room_service.dart';
 import '../utils/format.dart';
 import '../utils/photo.dart';
+import '../widgets/desk_view.dart';
 
 /// 초대 링크: 앱 주소에 `?invite=코드`를 붙인다. OAuth의 `code` 파라미터와 겹치지 않는다.
 String inviteLink(Uri base, String code) => Uri(
@@ -33,6 +34,7 @@ class RoomScreen extends StatefulWidget {
 class _RoomScreenState extends State<RoomScreen> {
   RoomSummary? _summary;
   List<RoomMember> _members = [];
+  List<MyCheckin> _mine = [];
   bool _loadFailed = false;
   bool _busy = false;
 
@@ -46,10 +48,12 @@ class _RoomScreenState extends State<RoomScreen> {
     try {
       final s = await widget.rooms.summary(widget.roomId);
       final m = await widget.rooms.members(widget.roomId);
+      final mine = s.status == RoomStatus.recruiting ? <MyCheckin>[] : await widget.rooms.myCheckins(widget.roomId);
       if (!mounted) return;
       setState(() {
         _summary = s;
         _members = m;
+        _mine = mine;
         _loadFailed = false;
       });
     } catch (_) {
@@ -109,6 +113,23 @@ class _RoomScreenState extends State<RoomScreen> {
     return result ?? false;
   }
 
+  Future<void> _deletePhoto(MyCheckin c) async {
+    final ok = await _ask('사진을 삭제할까요?',
+        '사진과 메모가 지워져요. 완료 체크와 이미 정리된 책상 요소는 그대로 남아요.');
+    if (!ok) return;
+    await _run(() => widget.rooms.deletePhoto(widget.roomId, c.date), done: '사진을 삭제했어요');
+    await _load();
+  }
+
+  Future<void> _cancelCheckin(MyCheckin c) async {
+    final ok = await _ask('인증을 취소할까요?',
+        '완료 체크가 취소되고 사진·메모가 지워져요. 현재 인증 수는 줄지만, 이미 정리된 책상 요소는 남아요. '
+        '오늘 인증이라면 남은 사진 올리기 횟수 안에서 다시 인증할 수 있어요.');
+    if (!ok) return;
+    await _run(() => widget.rooms.cancelCheckin(widget.roomId, c.date), done: '인증을 취소했어요');
+    await _load();
+  }
+
   Future<void> _openCheckIn() async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => CheckInScreen(rooms: widget.rooms, roomId: widget.roomId)),
@@ -155,7 +176,14 @@ class _RoomScreenState extends State<RoomScreen> {
         Text(_statusDetail(s, status), style: theme.textTheme.bodyMedium),
         const SizedBox(height: 16),
         if (status == RoomStatus.recruiting) _InviteCard(code: s.inviteCode, link: inviteLink(Uri.base, s.inviteCode)),
-        if (status == RoomStatus.active || status == RoomStatus.finished) _ProgressCard(summary: s),
+        if (status == RoomStatus.active || status == RoomStatus.finished) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: DeskView(total: s.totalElements, tidied: s.earned),
+          ),
+          const SizedBox(height: 12),
+          _ProgressCard(summary: s),
+        ],
         if (status == RoomStatus.active) ...[
           const SizedBox(height: 12),
           FilledButton.icon(
@@ -163,6 +191,28 @@ class _RoomScreenState extends State<RoomScreen> {
             icon: const Icon(Icons.photo_camera),
             label: const Text('오늘 정리 인증하기'),
           ),
+        ],
+        if (_mine.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          Text('내 인증', style: theme.textTheme.titleMedium),
+          for (final c in _mine)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(c.valid ? Icons.check_circle : Icons.remove_circle_outline,
+                  color: c.valid ? theme.colorScheme.primary : theme.colorScheme.outline),
+              title: Text('${c.date.month}/${c.date.day} ${c.valid ? '인증 완료' : '인증 취소됨'}'),
+              subtitle: Text(c.valid ? (c.hasPhoto ? '사진 있음' : '사진 삭제됨 · 완료 체크 유지') : '정리된 요소는 남아 있어요'),
+              trailing: c.valid
+                  ? PopupMenuButton<String>(
+                      tooltip: '인증 관리',
+                      onSelected: (v) => v == 'photo' ? _deletePhoto(c) : _cancelCheckin(c),
+                      itemBuilder: (_) => [
+                        if (c.hasPhoto) const PopupMenuItem(value: 'photo', child: Text('사진 삭제')),
+                        const PopupMenuItem(value: 'cancel', child: Text('인증 취소')),
+                      ],
+                    )
+                  : null,
+            ),
         ],
         const SizedBox(height: 20),
         Text('참가자 ${_members.length}명', style: theme.textTheme.titleMedium),
@@ -202,7 +252,9 @@ class _RoomScreenState extends State<RoomScreen> {
         RoomStatus.scheduled => '${formatDateTime(s.startsAt!.toLocal())}에 시작해서 3일 동안 진행해요.',
         RoomStatus.active =>
           '하루 한 번, 내 구역을 5분 정리하고 사진으로 인증해요. ${formatDateTime(s.endsAt!.toLocal())}에 끝나요.',
-        RoomStatus.finished => '마지막 책상과 획득한 배지는 그대로 남아요.',
+        RoomStatus.finished => s.goalReachedAt != null
+            ? '공동 목표를 달성했어요! 마지막 책상과 배지는 그대로 남아요.'
+            : '마지막 책상과 정리한 요소는 그대로 남아요.',
         RoomStatus.cancelled => '새 방을 만들 수 있어요.',
         RoomStatus.expired => '새 방을 만들 수 있어요.',
       };

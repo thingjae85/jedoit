@@ -58,6 +58,16 @@ class _FakeAccount extends AccountService {
   }
 
   @override
+  Future<DateTime> requestDeletion() async {
+    deletionRequested = true;
+    _signedIn = false;
+    notifyListeners();
+    return DateTime(2026, 11, 2);
+  }
+
+  bool deletionRequested = false;
+
+  @override
   Future<int> syncDrafts() async {
     var count = 0;
     for (final r in drafts.pendingDrafts()) {
@@ -129,5 +139,33 @@ void main() {
     expect(account.uploaded, hasLength(1));
     expect(drafts.pendingDrafts(), isEmpty);
     expect(find.textContaining('me@example.com'), findsOneWidget);
+  });
+
+  testWidgets('계정 삭제 요청은 확인 후 접수일·처리 예정일을 보여 주고 로그아웃된다', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final drafts = DraftStore(storage: SessionStorage());
+    final account = _FakeAccount(drafts);
+    await account.signInWithGoogle();
+    await tester.pumpWidget(JeoduitApp(account: account));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('계정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('계정 삭제 요청'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(account.deletionRequested, isFalse);
+
+    await tester.tap(find.byTooltip('계정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('계정 삭제 요청'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('삭제 요청'));
+    await tester.pumpAndSettle();
+    expect(account.deletionRequested, isTrue);
+    expect(find.textContaining('처리 예정일: 2026.11.02'), findsOneWidget);
   });
 }
