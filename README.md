@@ -10,7 +10,9 @@
 - 내 인증의 사진 삭제·인증 취소 (획득 보상 유지), 계정 삭제 요청 (7일 이내 처리)
 - 투두메이트 느낌 화면: 하단 탭(홈·챌린지·기록·마이), 이번 주 날짜 줄과 미션 체크 목록, 월 달력 기록, 방 화면 칸 진행도
 
-다음: 시연용 익명 참가(QR 찍고 닉네임만), Android APK.
+- 로그인 없이 참여(테스트): QR을 찍으면 바로 참여 방법을 묻고, 게스트로 닉네임만 넣고 참가
+
+다음: Android APK.
 
 - 웹에서 보기: https://thingjae85.github.io/jedoit/ (GitHub Pages, `main`에 푸시하면 자동 배포)
 - 설계 문서: [docs/저두잇_설계수정안_v2.md](docs/저두잇_설계수정안_v2.md)
@@ -62,6 +64,8 @@ Android 실행에는 Android SDK와 연결된 기기 또는 에뮬레이터가 �
 타이머는 실행 중 화면에서 사용하는 보조 기능이며, 앱 종료 후 복원이나 백그라운드 알림은 지원하지 않습니다.
 
 ## Supabase 설정
+로그인 없이 참여하려면 Authentication → Sign In / Providers에서 **Allow anonymous sign-ins**를 켜야 합니다.
+발표장처럼 같은 와이파이에서 여러 명이 한꺼번에 들어오면 Authentication → Rate Limits의 익명 로그인 한도(기본 시간당 30회, IP 기준)를 늘려 둡니다.
 `supabase/migrations/`의 SQL을 번호 순서대로 Supabase SQL Editor에서 실행합니다.
 앱에는 publishable 키만 들어갑니다(`lib/config.dart`). service_role 키와 DB 비밀번호는 저장소에 넣지 않습니다.
 

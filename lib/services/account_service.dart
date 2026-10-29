@@ -10,7 +10,13 @@ import 'draft_store.dart';
 abstract class AccountService extends ChangeNotifier {
   bool get signedIn;
   String? get email;
+
+  /// 회원가입 없이 들어온 게스트(테스트용 익명 계정)인지.
+  bool get isGuest;
   Future<void> signInWithGoogle();
+
+  /// 회원가입 없이 바로 참여한다. 같은 브라우저에서만 이어서 쓸 수 있다.
+  Future<void> signInAsGuest();
   Future<void> signOut();
 
   /// 체험 기록을 서버에 올린다. 로그인 전이면 초안으로 보관하고 false를 반환한다.
@@ -47,6 +53,12 @@ class SupabaseAccountService extends AccountService {
 
   @override
   String? get email => _auth.currentUser?.email;
+
+  @override
+  bool get isGuest => _auth.currentUser?.isAnonymous ?? false;
+
+  @override
+  Future<void> signInAsGuest() => _auth.signInAnonymously();
 
   @override
   Future<void> signInWithGoogle() async {
