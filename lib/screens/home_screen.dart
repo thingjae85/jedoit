@@ -59,6 +59,12 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.account?.addListener(_onAccountChanged);
     _refreshCount();
     _loadRoom();
+    // 초대 QR·링크로 열었으면 바로 참가 흐름을 띄운다 (Google 로그인 후 돌아와도 같은 방으로).
+    if (_challengeAvailable && widget.drafts?.invite != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openChallenge();
+      });
+    }
   }
 
   @override
@@ -80,6 +86,45 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('로그인을 시작하지 못했어요. 다시 시도해 주세요')),
       );
+    }
+  }
+
+  /// 로그인 전에 함께하기를 누르면 게스트로 바로 참여할지, Google로 로그인할지 고른다.
+  /// 게스트로 들어오면 true.
+  Future<bool> _askHowToJoin() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('어떻게 참여할까요?'),
+        content: const Text(
+          '회원가입 없이 닉네임만으로 바로 참여할 수 있어요(테스트용). '
+          '게스트 기록은 이 브라우저에서만 이어서 볼 수 있어요.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop('google'),
+              child: const Text('Google로 로그인')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop('guest'),
+              child: const Text('로그인 없이 참여')),
+        ],
+      ),
+    );
+    if (choice == 'google') {
+      await _signIn();
+      return false;
+    }
+    if (choice != 'guest') return false;
+    try {
+      await widget.account!.signInAsGuest();
+      return true;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('바로 참여하지 못했어요. 잠시 후 다시 시도해 주세요')),
+        );
+      }
+      return false;
     }
   }
 
@@ -161,15 +206,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final account = widget.account!;
     final rooms = widget.rooms!;
-    if (!account.signedIn) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('친구와 함께하려면 먼저 로그인해 주세요'),
-          action: SnackBarAction(label: 'Google 로그인', onPressed: _signIn),
-        ),
-      );
-      return;
-    }
+    if (!account.signedIn && !await _askHowToJoin()) return;
+    if (!mounted) return;
     String? roomId;
     try {
       roomId = await rooms.myRoomId();
@@ -682,10 +720,10 @@ class _ChallengeCard extends StatelessWidget {
           : '방에 들어가서 확인해 보세요';
     } else if (invited) {
       title = '초대받은 방이 있어요';
-      detail = signedIn ? '눌러서 참가해 보세요' : '로그인하고 참가해 보세요';
+      detail = signedIn ? '눌러서 참가해 보세요' : '로그인 없이 닉네임만으로 참가할 수 있어요';
     } else {
       title = '친구와 3일 정리 챌린지';
-      detail = signedIn ? '함께 정리할수록 공동 책상이 정돈돼요' : '로그인하고 친구를 초대해 보세요';
+      detail = signedIn ? '함께 정리할수록 공동 책상이 정돈돼요' : '로그인 없이도 친구를 초대할 수 있어요';
     }
     return Material(
       color: JdColors.togetherTint,
@@ -775,6 +813,21 @@ class _MyPage extends StatelessWidget {
   }
 }
 
+Future<bool> _confirmGuestSignOut(BuildContext context) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('게스트에서 로그아웃할까요?'),
+      content: const Text('로그아웃하면 이 게스트 계정으로 다시 들어올 수 없어요. 참여 중인 방도 다시 볼 수 없어요.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('취소')),
+        FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('로그아웃')),
+      ],
+    ),
+  );
+  return ok ?? false;
+}
+
 class _AccountCard extends StatelessWidget {
   const _AccountCard(
       {required this.account, required this.onSignIn, required this.onDelete});
@@ -793,14 +846,20 @@ class _AccountCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      '${account.email ?? 'Google 계정'}로 로그인했어요.\n기록이 내 계정에도 저장돼요.',
+                      account.isGuest
+                          ? '게스트로 참여 중이에요 (테스트).\n이 브라우저에서만 이어서 쓸 수 있어요.'
+                          : '${account.email ?? 'Google 계정'}로 로그인했어요.\n기록이 내 계정에도 저장돼요.',
                       style: const TextStyle(fontSize: 13),
                     ),
                   ),
                   PopupMenuButton<String>(
                     tooltip: '계정',
-                    onSelected: (v) =>
-                        v == 'out' ? account.signOut() : onDelete(),
+                    onSelected: (v) async {
+                      if (v != 'out') return onDelete();
+                      // 게스트는 로그아웃하면 같은 계정으로 다시 들어올 방법이 없다.
+                      if (account.isGuest && !await _confirmGuestSignOut(context)) return;
+                      await account.signOut();
+                    },
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 'out', child: Text('로그아웃')),
                       PopupMenuItem(value: 'delete', child: Text('계정 삭제 요청')),
