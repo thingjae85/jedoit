@@ -8,6 +8,7 @@ import 'package:jeoduit/screens/room_entry_screen.dart';
 import 'package:jeoduit/screens/room_screen.dart';
 import 'package:jeoduit/services/room_service.dart';
 import 'package:jeoduit/utils/photo.dart';
+import 'package:jeoduit/widgets/desk_view.dart';
 
 final _now = DateTime.utc(2026, 11, 11, 3); // 11/11 12:00 KST
 
@@ -74,6 +75,30 @@ class _FakeRooms implements RoomService {
   Future<void> leave(String roomId) async {}
   @override
   Future<void> checkIn(String roomId, Uint8List jpeg, String memo) async => uploaded = jpeg;
+
+  List<MyCheckin> mine = [];
+  final actions = <String>[];
+
+  bool failMine = false;
+
+  @override
+  Future<List<MyCheckin>> myCheckins(String roomId) async {
+    if (failMine) throw StateError('my_checkins 없음');
+    return mine;
+  }
+
+  @override
+  Future<void> deletePhoto(String roomId, DateTime date) async {
+    actions.add('photo ${date.day}');
+    mine = [for (final c in mine) c.date == date ? MyCheckin(date: c.date, valid: c.valid, hasPhoto: false) : c];
+    current = _summary(status: RoomStatus.active, earned: current.earned, active: 3, n0: 4, goal: 7, total: 10);
+  }
+
+  @override
+  Future<void> cancelCheckin(String roomId, DateTime date) async {
+    actions.add('cancel ${date.day}');
+    mine = [for (final c in mine) c.date == date ? MyCheckin(date: c.date, valid: false, hasPhoto: false) : c];
+  }
 }
 
 Widget _wrap(Widget child) => MaterialApp(home: child);
@@ -206,5 +231,62 @@ void main() {
     await tester.pumpAndSettle();
     expect(rooms.uploaded, isNotNull);
     expect(img.decodeJpg(rooms.uploaded!), isNotNull);
+  });
+
+  testWidgets('진행 중인 방에 공동 책상이 보이고, 사진 삭제와 인증 취소는 확인 후 진행된다', (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final day = DateTime(2026, 11, 11);
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 1, active: 3, n0: 4, goal: 7, total: 10)
+      ..mine = [MyCheckin(date: day, valid: true, hasPhoto: true)];
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
+    await tester.pumpAndSettle();
+
+    final desk = tester.widget<DeskView>(find.byType(DeskView));
+    expect(desk.total, 10);
+    expect(desk.tidied, 1);
+    expect(find.text('11/11 인증 완료'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('인증 관리'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('사진 삭제'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('완료 체크와 이미 정리된 책상 요소는 그대로'), findsOneWidget);
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+    expect(rooms.actions, ['photo 11']);
+    expect(find.text('사진 삭제됨 · 완료 체크 유지'), findsOneWidget);
+    expect(find.text('1 / 10'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('인증 관리'));
+    await tester.pumpAndSettle();
+    expect(find.text('사진 삭제'), findsNothing);
+    await tester.tap(find.text('인증 취소'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+    expect(rooms.actions, ['photo 11', 'cancel 11']);
+    expect(find.text('11/11 인증 취소됨'), findsOneWidget);
+    expect(find.byTooltip('인증 관리'), findsNothing);
+  });
+
+  testWidgets('내 인증 목록을 못 불러와도 방 진행도는 보인다', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 1, active: 3, n0: 4, goal: 7, total: 10)
+      ..failMine = true;
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
+    await tester.pumpAndSettle();
+    expect(find.text('1 / 10'), findsOneWidget);
+    expect(find.text('내 인증'), findsNothing);
+  });
+
+  testWidgets('이탈로 요소가 줄어도 정리된 요소는 남는다', (tester) async {
+    await tester.pumpWidget(_wrap(const SizedBox(width: 400, child: DeskView(total: 3, tidied: 5))));
+    expect(find.bySemanticsLabel('공동 책상, 물건 5개 중 5개 정리됨'), findsOneWidget);
   });
 }

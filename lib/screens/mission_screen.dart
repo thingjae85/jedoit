@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../models/mission.dart';
 import '../models/mission_record.dart';
 import '../services/record_repository.dart';
+import '../theme.dart';
+import '../widgets/jd_widgets.dart';
 import '../utils/format.dart';
 
 /// 개인 미션 실행 화면: 시작 → 실제 활동(타이머) → 완료 체크·메모 → 저장.
@@ -103,18 +105,35 @@ class _MissionScreenState extends State<MissionScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Center(
-            child: CircleAvatar(
-              radius: 36,
-              backgroundColor: theme.colorScheme.primaryContainer,
-              child: Icon(mission.icon, size: 36, color: theme.colorScheme.primary),
-            ),
+          Row(
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(color: JdColors.soloTint, borderRadius: BorderRadius.circular(20)),
+                child: Icon(mission.icon, size: 32, color: JdColors.solo),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const CategoryChip.solo(label: '혼자 미션'),
+                    const SizedBox(height: 6),
+                    Text(mission.description, style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 20),
-          Text(_started ? '02  실천하고 기록하기' : '01  작은 미션 시작하기',
-              style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary)),
-          const SizedBox(height: 8),
-          Text(mission.description, style: theme.textTheme.titleMedium),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              _Step(number: 1, label: '시작', active: !_started, done: _started),
+              const Expanded(child: Divider(indent: 8, endIndent: 8)),
+              _Step(number: 2, label: '실천하고 기록', active: _started, done: false),
+            ],
+          ),
           const SizedBox(height: 24),
           if (!_started)
             FilledButton.icon(
@@ -123,17 +142,28 @@ class _MissionScreenState extends State<MissionScreen> {
               label: const Text('시작하기'),
             )
           else ...[
-            if (_remaining != null) _TimerDisplay(remaining: _remaining!),
-            if (_remaining != null) ...[
-              const SizedBox(height: 12),
-              LinearProgressIndicator(
-                value: 1 - _remaining!.inSeconds / (mission.timerMinutes! * 60),
-                minHeight: 8,
+            if (_remaining != null)
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                decoration: BoxDecoration(color: JdColors.soloTint, borderRadius: BorderRadius.circular(20)),
+                child: Column(
+                  children: [
+                    _TimerDisplay(remaining: _remaining!),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: 1 - _remaining!.inSeconds / (mission.timerMinutes! * 60),
+                        minHeight: 8,
+                        backgroundColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('5분은 권장 시간이에요.\n먼저 끝나면 바로 기록해도 돼요.',
+                        textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: JdColors.soloText)),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              const Text('5분은 권장 시간이에요. 정리를 마쳤다면 먼저 기록해도 돼요.',
-                  textAlign: TextAlign.center),
-            ],
             if (_timeUp)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -160,7 +190,6 @@ class _MissionScreenState extends State<MissionScreen> {
               decoration: const InputDecoration(
                 labelText: '메모 (선택)',
                 hintText: '어땠는지 한 줄 남겨 보세요',
-                border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 8),
@@ -186,8 +215,46 @@ class _TimerDisplay extends StatelessWidget {
       child: Text(
         formatDuration(remaining),
         key: const Key('timerText'),
-        style: Theme.of(context).textTheme.displayLarge,
+        style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w800, color: JdColors.soloText,
+            fontFeatures: [FontFeature.tabularFigures()]),
       ),
+    );
+  }
+}
+
+/// 미션 단계 표시: 번호 동그라미와 이름.
+class _Step extends StatelessWidget {
+  const _Step({required this.number, required this.label, required this.active, required this.done});
+
+  final int number;
+  final String label;
+  final bool active;
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = active || done;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: on ? JdColors.solo : JdColors.empty, shape: BoxShape.circle),
+          child: done
+              ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
+              : Text('$number',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: on ? Colors.white : JdColors.faint)),
+        ),
+        const SizedBox(width: 6),
+        Text(label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+              color: active ? JdColors.ink : JdColors.faint,
+            )),
+      ],
     );
   }
 }

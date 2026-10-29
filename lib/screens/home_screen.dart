@@ -2,18 +2,29 @@ import 'package:flutter/material.dart';
 
 import '../models/mission.dart';
 import '../models/mission_record.dart';
+import '../models/room.dart';
 import '../services/account_service.dart';
 import '../services/draft_store.dart';
 import '../services/room_service.dart';
 import '../services/record_repository.dart';
+import '../theme.dart';
+import '../utils/format.dart';
+import '../widgets/jd_widgets.dart';
 import 'design_compare_screen.dart';
 import 'mission_screen.dart';
 import 'records_screen.dart';
 import 'room_entry_screen.dart';
 import 'room_screen.dart';
 
+/// 앱 첫 화면. 아래 탭으로 홈·챌린지·기록·마이를 오간다.
+/// 챌린지 탭은 화면을 바꾸지 않고 방 화면(또는 방 만들기)을 연다.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.repository, this.account, this.rooms, this.drafts});
+  const HomeScreen(
+      {super.key,
+      required this.repository,
+      this.account,
+      this.rooms,
+      this.drafts});
 
   final RecordRepository repository;
   final AccountService? account;
@@ -25,16 +36,29 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _recordCount = 0;
-  int _todayCount = 0;
-  Set<String> _todayMissions = {};
+  static const _homeTab = 0;
+  static const _challengeTab = 1;
+  static const _recordsTab = 2;
+
+  int _tab = _homeTab;
+  int _recordsVersion = 0; // 기록 탭을 열 때마다 새로 불러온다
+  DateTime? _recordsDay; // 기록 탭에서 처음 고를 날짜
+
+  List<MissionRecord> _records = [];
   bool _loadFailed = false;
+
+  RoomSummary? _room;
+  List<RoomMember> _members = [];
+
+  bool get _challengeAvailable =>
+      widget.account != null && widget.rooms != null;
 
   @override
   void initState() {
     super.initState();
     widget.account?.addListener(_onAccountChanged);
     _refreshCount();
+    _loadRoom();
   }
 
   @override
@@ -45,6 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onAccountChanged() {
     if (mounted) setState(() {});
+    _loadRoom();
   }
 
   Future<void> _signIn() async {
@@ -58,8 +83,82 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _requestDeletion() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('계정 삭제를 요청할까요?'),
+        content: const Text(
+          '참여 중인 방에서 바로 나가고, 내 인증 사진은 지금부터 아무도 볼 수 없어요. '
+          '이미 정리된 책상 요소는 방에 남아요. 사진·기록·계정은 7일 안에 실제로 삭제돼요.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('취소')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('삭제 요청')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final due = await widget.account!.requestDeletion();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('삭제 요청을 접수했어요'),
+          content: Text(
+              '접수일: ${formatDateTime(DateTime.now())}\n처리 예정일: ${formatDateTime(due.toLocal())}까지'),
+          actions: [
+            FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('확인'))
+          ],
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('삭제 요청을 보내지 못했어요. 다시 시도해 주세요')),
+      );
+    }
+  }
+
+  /// 홈의 친구 줄과 챌린지 카드에 쓸 내 방. 실패해도 홈은 그대로 쓴다.
+  Future<void> _loadRoom() async {
+    final rooms = widget.rooms;
+    if (rooms == null || !(widget.account?.signedIn ?? false)) {
+      if (_room != null && mounted) {
+        setState(() {
+          _room = null;
+          _members = [];
+        });
+      }
+      return;
+    }
+    try {
+      final id = await rooms.myRoomId();
+      final summary = id == null ? null : await rooms.summary(id);
+      final members = id == null ? <RoomMember>[] : await rooms.members(id);
+      if (!mounted) return;
+      setState(() {
+        _room = summary;
+        _members = members;
+      });
+    } catch (_) {}
+  }
+
   /// 함께하기: 로그인 → (참여 중인 방이 없으면) 방 만들기·참가 → 방 화면.
   Future<void> _openChallenge() async {
+    if (!_challengeAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('지금은 서버에 연결하지 못해 친구 챌린지를 쓸 수 없어요')),
+      );
+      return;
+    }
     final account = widget.account!;
     final rooms = widget.rooms!;
     if (!account.signedIn) {
@@ -85,7 +184,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (roomId == null) {
       roomId = await Navigator.of(context).push<String>(
         MaterialPageRoute(
-          builder: (_) => RoomEntryScreen(rooms: rooms, inviteCode: widget.drafts?.invite),
+          builder: (_) =>
+              RoomEntryScreen(rooms: rooms, inviteCode: widget.drafts?.invite),
         ),
       );
       if (roomId == null || !mounted) return;
@@ -97,9 +197,11 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => RoomScreen(rooms: rooms, roomId: roomId!)),
+      MaterialPageRoute(
+          builder: (_) => RoomScreen(rooms: rooms, roomId: roomId!)),
     );
     if (mounted) setState(() {});
+    await _loadRoom();
   }
 
   /// 기기 저장이 끝난 기록을 계정에도 올린다. 로그인 전이면 초안으로 보관된다.
@@ -120,15 +222,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final records = await widget.repository.loadAll();
       if (!mounted) return;
-      final now = DateTime.now();
-      final today = records.where((record) {
-        final date = record.completedAt.toLocal();
-        return date.year == now.year && date.month == now.month && date.day == now.day;
-      }).toList();
       setState(() {
-        _recordCount = records.length;
-        _todayCount = today.length;
-        _todayMissions = today.map((r) => r.missionId).toSet();
+        _records = records;
         _loadFailed = false;
       });
     } catch (_) {
@@ -158,13 +253,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _openRecords() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => RecordsScreen(repository: widget.repository),
-      ),
-    );
-    await _refreshCount();
+  /// 주간 날짜 칸을 누르면 그날이 골라진 기록 달력을 연다.
+  void _openDay(DateTime day) {
+    _recordsDay = day;
+    _selectTab(_recordsTab);
+  }
+
+  void _selectTab(int index) {
+    if (index != _recordsTab) _recordsDay = null;
+    if (index == _challengeTab) {
+      _openChallenge();
+      return;
+    }
+    if (index == _homeTab) _refreshCount();
+    setState(() {
+      if (index == _recordsTab) _recordsVersion++;
+      _tab = index;
+    });
   }
 
   void _openDesignCompare() {
@@ -175,101 +280,334 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final Widget body = switch (_tab) {
+      _recordsTab => RecordsScreen(
+          key: ValueKey(_recordsVersion),
+          repository: widget.repository,
+          initialDay: _recordsDay,
+          onPickMission: () => _selectTab(_homeTab),
+        ),
+      _homeTab => _homeBody(context),
+      _ => _MyPage(
+          account: widget.account,
+          onSignIn: _signIn,
+          onDelete: _requestDeletion,
+          onDesignCompare: _openDesignCompare),
+    };
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('저두잇'),
-        actions: [
-          IconButton(
-            tooltip: '시안 비교',
-            icon: const Icon(Icons.compare),
-            onPressed: _openDesignCompare,
-          ),
-          IconButton(
-            tooltip: '내 기록',
-            icon: const Icon(Icons.history),
-            onPressed: _openRecords,
-          ),
+      body: body,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tab,
+        onDestinationSelected: _selectTab,
+        destinations: const [
+          NavigationDestination(
+              icon: Icon(Icons.check_box_outlined),
+              selectedIcon: Icon(Icons.check_box),
+              label: '홈'),
+          NavigationDestination(
+              icon: Icon(Icons.groups_outlined), label: '챌린지'),
+          NavigationDestination(
+              icon: Icon(Icons.calendar_month_outlined),
+              selectedIcon: Icon(Icons.calendar_month),
+              label: '기록'),
+          NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: '마이'),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+    );
+  }
+
+  Widget _homeBody(BuildContext context) {
+    final now = DateTime.now();
+    final today = dayOf(now);
+    final byDay = recordsByDay(_records);
+    final todayRecords = byDay[today] ?? const <MissionRecord>[];
+    final todayMissions = todayRecords.map((r) => r.missionId).toSet();
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
-          Text('오늘 하나만 해볼까요?', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 4),
-          Text(
-            '작은 미션 하나를 골라 먼저 혼자 체험해 보세요.',
-            style: theme.textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 16),
-          Card(
-            color: theme.colorScheme.primaryContainer,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('오늘의 작은 실천', style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Text(_loadFailed ? '기록을 불러오지 못했어요' : '오늘 $_todayCount번 완료',
-                      style: theme.textTheme.headlineSmall),
-                  const SizedBox(height: 8),
-                  Text(_todayCount == 0 ? '하나만 해도 좋은 시작이에요.' : '작은 실천이 쌓이고 있어요.'),
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: _loadFailed ? _refreshCount : _openRecords,
-                    icon: Icon(_loadFailed ? Icons.refresh : Icons.arrow_forward),
-                    label: Text(_loadFailed ? '다시 불러오기' : '전체 기록 $_recordCount개 보기'),
-                  ),
-                ],
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                    color: JdColors.solo,
+                    borderRadius: BorderRadius.circular(9)),
+                child: const Icon(Icons.check_rounded,
+                    size: 18, color: Colors.white),
               ),
-            ),
-          ),
-          if (widget.account != null && widget.rooms != null) ...[
-            const SizedBox(height: 12),
-            Card(
-              color: theme.colorScheme.secondaryContainer,
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                leading: const Icon(Icons.groups),
-                title: Text(widget.drafts?.invite != null ? '초대받은 방이 있어요' : '친구와 3일 정리 챌린지'),
-                subtitle: Text(widget.drafts?.invite != null
-                    ? '로그인하고 참가해 보세요'
-                    : '함께 정리할수록 공동 책상이 정돈돼요'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: _openChallenge,
-              ),
-            ),
-          ],
-          const SizedBox(height: 20),
-          Text('오늘 할 미션', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 12),
-          for (final mission in kMissions) ...[
-            _MissionCard(mission: mission, completed: _todayMissions.contains(mission.id), onTap: () => _openMission(mission)),
-            const SizedBox(height: 12),
-          ],
-          const SizedBox(height: 8),
-          if (widget.account == null)
-            Card(
-              color: theme.colorScheme.surfaceContainerHighest,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(
-                  '기록은 이 기기·브라우저에만 저장돼요.',
-                  style: theme.textTheme.bodySmall,
+              const SizedBox(width: 8),
+              const Text('저두잇',
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5)),
+              const Spacer(),
+              if (_challengeAvailable)
+                IconButton(
+                  tooltip: '친구 초대',
+                  icon: const Icon(Icons.person_add_alt_outlined),
+                  onPressed: _openChallenge,
                 ),
-              ),
-            )
-          else
-            _AccountCard(account: widget.account!, onSignIn: _signIn),
+            ],
+          ),
+          if (_challengeAvailable) ...[
+            const SizedBox(height: 12),
+            _FriendRow(
+              members: _members,
+              signedIn: widget.account!.signedIn,
+              onTap: _openChallenge,
+            ),
+          ],
+          const SizedBox(height: 16),
+          _WeekStrip(
+            today: today,
+            byDay: byDay,
+            loadFailed: _loadFailed,
+            todayCount: todayRecords.length,
+            recordCount: _records.length,
+            onRetry: _refreshCount,
+            onOpenRecords: () => _selectTab(_recordsTab),
+            onOpenDay: _openDay,
+          ),
+          const Divider(height: 32),
+          Row(
+            children: [
+              const CategoryChip.solo(label: '혼자 미션'),
+              const Spacer(),
+              Text('오늘 할 미션',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: JdColors.subtle)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (final mission in kMissions)
+            _MissionRow(
+              mission: mission,
+              completed: todayMissions.contains(mission.id),
+              onTap: () => _openMission(mission),
+            ),
+          if (_challengeAvailable) ...[
+            const SizedBox(height: 22),
+            const Align(
+                alignment: Alignment.centerLeft,
+                child: CategoryChip.together(label: '친구 3일 챌린지')),
+            const SizedBox(height: 10),
+            _ChallengeCard(
+              room: _room,
+              signedIn: widget.account!.signedIn,
+              invited: widget.drafts?.invite != null,
+              onTap: _openChallenge,
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _MissionCard extends StatelessWidget {
-  const _MissionCard({required this.mission, required this.completed, required this.onTap});
+/// 같은 방 참가자 동그라미 줄. 방이 없으면 나와 초대 버튼만 보인다.
+class _FriendRow extends StatelessWidget {
+  const _FriendRow(
+      {required this.members, required this.signedIn, required this.onTap});
+
+  final List<RoomMember> members;
+  final bool signedIn;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final people = members.isEmpty
+        ? [(name: '나', label: '나')]
+        : [
+            for (final m in [
+              ...members.where((m) => m.isMe),
+              ...members.where((m) => !m.isMe)
+            ])
+              (name: m.nickname, label: m.isMe ? '나' : m.displayName),
+          ];
+    return SizedBox(
+      height: 76,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          for (final (i, p) in people.indexed)
+            _FriendSlot(
+              label: p.label,
+              onTap: onTap,
+              child: FriendAvatar(
+                  name: p.name,
+                  index: i,
+                  ring: members.isEmpty ? null : JdColors.togetherFill),
+            ),
+          if (members.length < 4)
+            _FriendSlot(
+              label: '초대',
+              onTap: onTap,
+              child: Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: JdColors.panel,
+                  border: Border.all(color: const Color(0xFFE4E6E9), width: 2),
+                ),
+                child: const Icon(Icons.add, color: JdColors.subtle),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FriendSlot extends StatelessWidget {
+  const _FriendSlot(
+      {required this.label, required this.onTap, required this.child});
+
+  final String label;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: 56,
+          child: Column(
+            children: [
+              child,
+              const SizedBox(height: 6),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFF4A5056))),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 이번 주(월~일) 날짜 줄. 그날 마친 미션 수를 칸에 보여 준다.
+class _WeekStrip extends StatelessWidget {
+  const _WeekStrip({
+    required this.today,
+    required this.byDay,
+    required this.loadFailed,
+    required this.todayCount,
+    required this.recordCount,
+    required this.onRetry,
+    required this.onOpenRecords,
+    required this.onOpenDay,
+  });
+
+  static const _dow = ['월', '화', '수', '목', '금', '토', '일'];
+
+  final DateTime today;
+  final Map<DateTime, List<MissionRecord>> byDay;
+  final bool loadFailed;
+  final int todayCount;
+  final int recordCount;
+  final VoidCallback onRetry;
+  final VoidCallback onOpenRecords;
+  final ValueChanged<DateTime> onOpenDay;
+
+  @override
+  Widget build(BuildContext context) {
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Text('${today.year}년 ${today.month}월',
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: loadFailed ? onRetry : onOpenRecords,
+                  child: Text(
+                    loadFailed ? '다시 불러오기' : '전체 기록 $recordCount개 보기',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            for (var i = 0; i < 7; i++)
+              Expanded(child: _day(monday.add(Duration(days: i)), _dow[i])),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          loadFailed ? '기록을 불러오지 못했어요' : '오늘 $todayCount번 완료',
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        ),
+        if (!loadFailed)
+          Text(
+            todayCount == 0 ? '하나만 해도 좋은 시작이에요.' : '작은 실천이 쌓이고 있어요.',
+            style: const TextStyle(fontSize: 13, color: JdColors.subtle),
+          ),
+      ],
+    );
+  }
+
+  Widget _day(DateTime day, String dow) {
+    final records = byDay[day] ?? const <MissionRecord>[];
+    final missions = records.map((r) => r.missionId).toSet().length;
+    final isToday = day == today;
+    final strong = isToday ? JdColors.ink : JdColors.faint;
+    final future = day.isAfter(today);
+    return InkWell(
+      onTap: future ? null : () => onOpenDay(day),
+      borderRadius: BorderRadius.circular(12),
+      child: Column(
+        children: [
+          Text(dow, style: TextStyle(fontSize: 12, color: strong)),
+          const SizedBox(height: 6),
+          DayBlob(
+            count: missions,
+            full: missions >= kMissions.length,
+            today: isToday,
+            future: future,
+          ),
+          const SizedBox(height: 6),
+          Text('${day.day}',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: strong,
+                  fontWeight: isToday ? FontWeight.w700 : FontWeight.w400)),
+        ],
+      ),
+    );
+  }
+}
+
+class _MissionRow extends StatelessWidget {
+  const _MissionRow(
+      {required this.mission, required this.completed, required this.onTap});
 
   final Mission mission;
   final bool completed;
@@ -277,63 +615,207 @@ class _MissionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: mission.challengeReady ? 3 : 0,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-          backgroundColor: theme.colorScheme.primaryContainer,
-          child: Icon(mission.icon, color: theme.colorScheme.onPrimaryContainer),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
+        child: Row(
+          children: [
+            CheckSquare(checked: completed),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(mission.title,
+                      style: TextStyle(
+                          fontSize: 15,
+                          color: completed ? JdColors.faint : JdColors.ink)),
+                  if (completed)
+                    const Text('오늘 완료했어요 · 다시 해도 좋아요',
+                        style: TextStyle(fontSize: 12, color: JdColors.faint)),
+                ],
+              ),
+            ),
+            if (mission.timerMinutes != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                    color: JdColors.panel,
+                    borderRadius: BorderRadius.circular(6)),
+                child: Text('${mission.timerMinutes}분',
+                    style:
+                        const TextStyle(fontSize: 12, color: JdColors.subtle)),
+              ),
+          ],
         ),
-        title: Text(mission.title),
-        subtitle: Text('${mission.description}${completed ? '\n오늘 완료했어요 · 다시 해도 좋아요' : ''}'),
-        trailing: completed ? const Icon(Icons.check_circle, color: Color(0xFF3E7C6B)) : mission.challengeReady
-            ? Chip(
-                label: const Text('추천'),
-                visualDensity: VisualDensity.compact,
-                backgroundColor: theme.colorScheme.secondaryContainer,
-              )
-            : const Icon(Icons.chevron_right),
+      ),
+    );
+  }
+}
+
+class _ChallengeCard extends StatelessWidget {
+  const _ChallengeCard(
+      {required this.room,
+      required this.signedIn,
+      required this.invited,
+      required this.onTap});
+
+  final RoomSummary? room;
+  final bool signedIn;
+  final bool invited;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = room;
+    final status = r?.statusAt(DateTime.now());
+    final showProgress =
+        status == RoomStatus.active || status == RoomStatus.finished;
+    final String title;
+    final String detail;
+    if (r != null) {
+      title = roomStatusTitle(status!);
+      detail = showProgress
+          ? '정리된 요소 ${r.earned} / ${r.totalElements}${r.goal != null ? ' · 목표 ${r.goal}개' : ''}'
+          : '방에 들어가서 확인해 보세요';
+    } else if (invited) {
+      title = '초대받은 방이 있어요';
+      detail = signedIn ? '눌러서 참가해 보세요' : '로그인하고 참가해 보세요';
+    } else {
+      title = '친구와 3일 정리 챌린지';
+      detail = signedIn ? '함께 정리할수록 공동 책상이 정돈돼요' : '로그인하고 친구를 초대해 보세요';
+    }
+    return Material(
+      color: JdColors.togetherTint,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text(detail,
+                        style: const TextStyle(
+                            fontSize: 13, color: JdColors.subtle)),
+                    if (showProgress && r!.totalElements > 0) ...[
+                      const SizedBox(height: 10),
+                      ElementBar(
+                          earned: r.earned, total: r.totalElements, height: 6),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right, color: JdColors.subtle),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MyPage extends StatelessWidget {
+  const _MyPage(
+      {required this.account,
+      required this.onSignIn,
+      required this.onDelete,
+      required this.onDesignCompare});
+
+  final AccountService? account;
+  final VoidCallback onSignIn;
+  final VoidCallback onDelete;
+  final VoidCallback onDesignCompare;
+
+  @override
+  Widget build(BuildContext context) {
+    final account = this.account;
+    return Scaffold(
+      appBar: AppBar(title: const Text('마이')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        children: [
+          if (account == null)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('기록은 이 기기·브라우저에만 저장돼요.',
+                    style: TextStyle(fontSize: 13)),
+              ),
+            )
+          else
+            ListenableBuilder(
+              listenable: account,
+              builder: (context, _) => _AccountCard(
+                  account: account, onSignIn: onSignIn, onDelete: onDelete),
+            ),
+          const SizedBox(height: 12),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.compare_outlined),
+            title: const Text('시안 비교'),
+            subtitle: const Text('인터뷰용 공동 책상 시안'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onDesignCompare,
+          ),
+        ],
       ),
     );
   }
 }
 
 class _AccountCard extends StatelessWidget {
-  const _AccountCard({required this.account, required this.onSignIn});
+  const _AccountCard(
+      {required this.account, required this.onSignIn, required this.onDelete});
 
   final AccountService account;
   final VoidCallback onSignIn;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Card(
-      color: theme.colorScheme.surfaceContainerHighest,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: account.signedIn
             ? Row(
                 children: [
                   Expanded(
                     child: Text(
                       '${account.email ?? 'Google 계정'}로 로그인했어요.\n기록이 내 계정에도 저장돼요.',
-                      style: theme.textTheme.bodySmall,
+                      style: const TextStyle(fontSize: 13),
                     ),
                   ),
-                  TextButton(onPressed: account.signOut, child: const Text('로그아웃')),
+                  PopupMenuButton<String>(
+                    tooltip: '계정',
+                    onSelected: (v) =>
+                        v == 'out' ? account.signOut() : onDelete(),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'out', child: Text('로그아웃')),
+                      PopupMenuItem(value: 'delete', child: Text('계정 삭제 요청')),
+                    ],
+                  ),
                 ],
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     '로그인하면 기록을 계정에 저장하고 친구와 방을 만들 수 있어요.',
-                    style: theme.textTheme.bodySmall,
+                    style: TextStyle(fontSize: 13),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   OutlinedButton.icon(
                     onPressed: onSignIn,
                     icon: const Icon(Icons.login),

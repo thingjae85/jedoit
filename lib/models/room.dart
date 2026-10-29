@@ -128,3 +128,20 @@ class InvitePreview {
         recruitExpiresAt: DateTime.parse(j['recruit_expires_at'] as String),
       );
 }
+
+/// 내 날짜별 인증. 사진 삭제는 완료 체크·보상을 남기고, 인증 취소는 완료 체크를 무효로 한다.
+class MyCheckin {
+  const MyCheckin({required this.date, required this.valid, required this.hasPhoto, this.memo});
+
+  final DateTime date;
+  final bool valid;
+  final bool hasPhoto;
+  final String? memo;
+
+  factory MyCheckin.fromJson(Map<String, dynamic> j) => MyCheckin(
+        date: DateTime.parse(j['slot_date'] as String),
+        valid: j['valid'] as bool,
+        hasPhoto: j['has_photo'] as bool,
+        memo: j['memo'] as String?,
+      );
+}
