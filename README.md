@@ -66,9 +66,9 @@ Android 실행에는 Android SDK와 연결된 기기 또는 에뮬레이터가 �
 앱에는 publishable 키만 들어갑니다(`lib/config.dart`). service_role 키와 DB 비밀번호는 저장소에 넣지 않습니다.
 
 ## 검증 상태
-2026-10-26 Flutter 3.47.8 (Dart 3.13.7, Linux)에서 확인했습니다.
+2026-10-29 Flutter 3.47.8 (Dart 3.13.7, Linux)에서 확인했습니다.
 - `flutter analyze`: 오류 없음, const 권장 안내(info) 3건
-- `flutter test`: 29개 테스트 모두 통과 (서버는 가짜 구현으로 대체)
+- `flutter test`: 31개 테스트 모두 통과 (서버는 가짜 구현으로 대체)
 - `flutter build web`: 성공
 - SQL: 로컬 PostgreSQL 16에서 기획서 예시(4명 중 1명 이탈 시 T=10, G=7) 확인. 실제 Supabase에서의 로그인·업로드는 아직 확인 전
 

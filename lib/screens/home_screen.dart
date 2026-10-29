@@ -42,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int _tab = _homeTab;
   int _recordsVersion = 0; // 기록 탭을 열 때마다 새로 불러온다
+  DateTime? _recordsDay; // 기록 탭에서 처음 고를 날짜
 
   List<MissionRecord> _records = [];
   bool _loadFailed = false;
@@ -92,8 +93,12 @@ class _HomeScreenState extends State<HomeScreen> {
           '이미 정리된 책상 요소는 방에 남아요. 사진·기록·계정은 7일 안에 실제로 삭제돼요.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('삭제 요청')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('취소')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('삭제 요청')),
         ],
       ),
     );
@@ -105,8 +110,13 @@ class _HomeScreenState extends State<HomeScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('삭제 요청을 접수했어요'),
-          content: Text('접수일: ${formatDateTime(DateTime.now())}\n처리 예정일: ${formatDateTime(due.toLocal())}까지'),
-          actions: [FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('확인'))],
+          content: Text(
+              '접수일: ${formatDateTime(DateTime.now())}\n처리 예정일: ${formatDateTime(due.toLocal())}까지'),
+          actions: [
+            FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('확인'))
+          ],
         ),
       );
     } catch (_) {
@@ -243,7 +253,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// 주간 날짜 칸을 누르면 그날이 골라진 기록 달력을 연다.
+  void _openDay(DateTime day) {
+    _recordsDay = day;
+    _selectTab(_recordsTab);
+  }
+
   void _selectTab(int index) {
+    if (index != _recordsTab) _recordsDay = null;
     if (index == _challengeTab) {
       _openChallenge();
       return;
@@ -267,6 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _recordsTab => RecordsScreen(
           key: ValueKey(_recordsVersion),
           repository: widget.repository,
+          initialDay: _recordsDay,
           onPickMission: () => _selectTab(_homeTab),
         ),
       _homeTab => _homeBody(context),
@@ -355,6 +373,7 @@ class _HomeScreenState extends State<HomeScreen> {
             recordCount: _records.length,
             onRetry: _refreshCount,
             onOpenRecords: () => _selectTab(_recordsTab),
+            onOpenDay: _openDay,
           ),
           const Divider(height: 32),
           Row(
@@ -493,6 +512,7 @@ class _WeekStrip extends StatelessWidget {
     required this.recordCount,
     required this.onRetry,
     required this.onOpenRecords,
+    required this.onOpenDay,
   });
 
   static const _dow = ['월', '화', '수', '목', '금', '토', '일'];
@@ -504,6 +524,7 @@ class _WeekStrip extends StatelessWidget {
   final int recordCount;
   final VoidCallback onRetry;
   final VoidCallback onOpenRecords;
+  final ValueChanged<DateTime> onOpenDay;
 
   @override
   Widget build(BuildContext context) {
@@ -558,23 +579,28 @@ class _WeekStrip extends StatelessWidget {
     final missions = records.map((r) => r.missionId).toSet().length;
     final isToday = day == today;
     final strong = isToday ? JdColors.ink : JdColors.faint;
-    return Column(
-      children: [
-        Text(dow, style: TextStyle(fontSize: 12, color: strong)),
-        const SizedBox(height: 6),
-        DayBlob(
-          count: missions,
-          full: missions >= kMissions.length,
-          today: isToday,
-          future: day.isAfter(today),
-        ),
-        const SizedBox(height: 6),
-        Text('${day.day}',
-            style: TextStyle(
-                fontSize: 12,
-                color: strong,
-                fontWeight: isToday ? FontWeight.w700 : FontWeight.w400)),
-      ],
+    final future = day.isAfter(today);
+    return InkWell(
+      onTap: future ? null : () => onOpenDay(day),
+      borderRadius: BorderRadius.circular(12),
+      child: Column(
+        children: [
+          Text(dow, style: TextStyle(fontSize: 12, color: strong)),
+          const SizedBox(height: 6),
+          DayBlob(
+            count: missions,
+            full: missions >= kMissions.length,
+            today: isToday,
+            future: future,
+          ),
+          const SizedBox(height: 6),
+          Text('${day.day}',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: strong,
+                  fontWeight: isToday ? FontWeight.w700 : FontWeight.w400)),
+        ],
+      ),
     );
   }
 }
@@ -731,8 +757,8 @@ class _MyPage extends StatelessWidget {
           else
             ListenableBuilder(
               listenable: account,
-              builder: (context, _) =>
-                  _AccountCard(account: account, onSignIn: onSignIn, onDelete: onDelete),
+              builder: (context, _) => _AccountCard(
+                  account: account, onSignIn: onSignIn, onDelete: onDelete),
             ),
           const SizedBox(height: 12),
           ListTile(
@@ -750,7 +776,8 @@ class _MyPage extends StatelessWidget {
 }
 
 class _AccountCard extends StatelessWidget {
-  const _AccountCard({required this.account, required this.onSignIn, required this.onDelete});
+  const _AccountCard(
+      {required this.account, required this.onSignIn, required this.onDelete});
 
   final AccountService account;
   final VoidCallback onSignIn;
@@ -772,7 +799,8 @@ class _AccountCard extends StatelessWidget {
                   ),
                   PopupMenuButton<String>(
                     tooltip: '계정',
-                    onSelected: (v) => v == 'out' ? account.signOut() : onDelete(),
+                    onSelected: (v) =>
+                        v == 'out' ? account.signOut() : onDelete(),
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 'out', child: Text('로그아웃')),
                       PopupMenuItem(value: 'delete', child: Text('계정 삭제 요청')),

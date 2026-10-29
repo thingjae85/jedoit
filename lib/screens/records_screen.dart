@@ -8,12 +8,15 @@ import '../widgets/jd_widgets.dart';
 
 /// 개인 기록 목록. 기록 하나 삭제·전체 삭제는 확인창을 거친다.
 class RecordsScreen extends StatefulWidget {
-  const RecordsScreen({super.key, required this.repository, this.onPickMission});
+  const RecordsScreen({super.key, required this.repository, this.onPickMission, this.initialDay});
 
   final RecordRepository repository;
 
   /// 기록이 없을 때 '미션 고르기'를 누르면 부른다. 없으면 이전 화면으로 돌아간다.
   final VoidCallback? onPickMission;
+
+  /// 처음 고를 날짜. 없으면 오늘.
+  final DateTime? initialDay;
 
   @override
   State<RecordsScreen> createState() => _RecordsScreenState();
@@ -23,7 +26,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
   List<MissionRecord>? _records; // null이면 불러오는 중
   bool _loadFailed = false;
   bool _deleting = false;
-  late DateTime _selected = dayOf(DateTime.now());
+  late DateTime _selected = dayOf(widget.initialDay ?? DateTime.now());
   late DateTime _month = DateTime(_selected.year, _selected.month);
 
   @override

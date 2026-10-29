@@ -182,6 +182,21 @@ void main() {
     expect((await repo.loadAll()).length, 1);
   });
 
+  testWidgets('홈의 이번 주 날짜를 누르면 그날 기록이 골라진 달력이 열린다', (tester) async {
+    _useTallScreen(tester);
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day - (now.weekday - 1), 9);
+    final repo = LocalRecordRepository();
+    await repo.add(_record('mon', 'reading', monday, memo: '월요일 독서'));
+
+    await tester.pumpWidget(JeoduitApp(repository: repo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('${monday.day}').first);
+    await tester.pumpAndSettle();
+    expect(find.text('내 기록'), findsOneWidget);
+    expect(find.text('월요일 독서'), findsOneWidget);
+  });
+
   testWidgets('기록 달력은 고른 날의 기록만 보여 주고 달을 넘길 수 있다', (tester) async {
     _useTallScreen(tester);
     final now = DateTime.now();
