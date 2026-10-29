@@ -41,7 +41,18 @@ abstract class RoomService {
 
   /// 이미 압축한 JPEG을 올리고 오늘 인증으로 저장한다.
   Future<void> checkIn(String roomId, Uint8List jpeg, String memo);
+
+  Future<List<MyCheckin>> myCheckins(String roomId);
+
+  /// 사진·메모만 지운다. 완료 체크와 획득 보상은 남는다.
+  Future<void> deletePhoto(String roomId, DateTime date);
+
+  /// 완료 체크를 무효로 하고 사진·메모를 지운다. 획득 보상은 남는다.
+  Future<void> cancelCheckin(String roomId, DateTime date);
 }
+
+String _day(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 class SupabaseRoomService implements RoomService {
   SupabaseClient get _db => Supabase.instance.client;
@@ -82,6 +93,30 @@ class SupabaseRoomService implements RoomService {
 
   @override
   Future<void> leave(String roomId) => _db.rpc('leave_room', params: {'r': roomId});
+
+  @override
+  Future<List<MyCheckin>> myCheckins(String roomId) async {
+    final rows = await _db.rpc('my_checkins', params: {'r': roomId}) as List;
+    return rows.map((r) => MyCheckin.fromJson(r as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<void> deletePhoto(String roomId, DateTime date) => _removeAfter(
+      _db.rpc('delete_checkin_photo', params: {'r': roomId, 'd': _day(date)}));
+
+  @override
+  Future<void> cancelCheckin(String roomId, DateTime date) => _removeAfter(
+      _db.rpc('cancel_checkin', params: {'r': roomId, 'd': _day(date)}));
+
+  /// 서버에서 목록 제외가 끝난 뒤 파일을 지운다. 파일 삭제가 실패해도
+  /// 이미 아무도 볼 수 없고, 남은 파일은 운영 점검에서 7일 안에 정리한다.
+  Future<void> _removeAfter(Future<dynamic> call) async {
+    final path = await call as String?;
+    if (path == null) return;
+    try {
+      await _db.storage.from('checkins').remove([path]);
+    } catch (_) {}
+  }
 
   @override
   Future<void> checkIn(String roomId, Uint8List jpeg, String memo) async {
