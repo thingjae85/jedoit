@@ -79,8 +79,13 @@ class _FakeRooms implements RoomService {
   List<MyCheckin> mine = [];
   final actions = <String>[];
 
+  bool failMine = false;
+
   @override
-  Future<List<MyCheckin>> myCheckins(String roomId) async => mine;
+  Future<List<MyCheckin>> myCheckins(String roomId) async {
+    if (failMine) throw StateError('my_checkins 없음');
+    return mine;
+  }
 
   @override
   Future<void> deletePhoto(String roomId, DateTime date) async {
@@ -265,6 +270,19 @@ void main() {
     expect(rooms.actions, ['photo 11', 'cancel 11']);
     expect(find.text('11/11 인증 취소됨'), findsOneWidget);
     expect(find.byTooltip('인증 관리'), findsNothing);
+  });
+
+  testWidgets('내 인증 목록을 못 불러와도 방 진행도는 보인다', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 1, active: 3, n0: 4, goal: 7, total: 10)
+      ..failMine = true;
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
+    await tester.pumpAndSettle();
+    expect(find.text('1 / 10'), findsOneWidget);
+    expect(find.text('내 인증'), findsNothing);
   });
 
   testWidgets('이탈로 요소가 줄어도 정리된 요소는 남는다', (tester) async {

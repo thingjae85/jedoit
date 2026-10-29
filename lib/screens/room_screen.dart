@@ -60,7 +60,13 @@ class _RoomScreenState extends State<RoomScreen> {
     try {
       final s = await widget.rooms.summary(widget.roomId);
       final m = await widget.rooms.members(widget.roomId);
-      final mine = s.status == RoomStatus.recruiting ? <MyCheckin>[] : await widget.rooms.myCheckins(widget.roomId);
+      // 내 인증 목록을 못 불러와도 방 화면은 보여 준다.
+      var mine = <MyCheckin>[];
+      if (s.status != RoomStatus.recruiting) {
+        try {
+          mine = await widget.rooms.myCheckins(widget.roomId);
+        } catch (_) {}
+      }
       if (!mounted) return;
       setState(() {
         _summary = s;
