@@ -436,7 +436,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 22),
             const Align(
                 alignment: Alignment.centerLeft,
-                child: CategoryChip.together(label: '친구 3일 챌린지')),
+                child: CategoryChip.together(label: '친구와 챌린지')),
             const SizedBox(height: 10),
             _ChallengeCard(
               room: _room,
@@ -716,14 +716,14 @@ class _ChallengeCard extends StatelessWidget {
     if (r != null) {
       title = roomStatusTitle(status!);
       detail = showProgress
-          ? '함께 진행도 ${r.earned} / ${r.totalElements}${r.goal != null ? ' · 목표 ${r.goal}회' : ''}'
-          : '방에 들어가서 확인해 보세요';
+          ? '${r.challengeName} · 진행도 ${r.earned} / ${r.totalElements}'
+          : '${r.challengeName} · 방에 들어가서 확인해 보세요';
     } else if (invited) {
       title = '초대받은 방이 있어요';
       detail = signedIn ? '눌러서 참가해 보세요' : '로그인 없이 닉네임만으로 참가할 수 있어요';
     } else {
-      title = '친구와 3일 정리 챌린지';
-      detail = signedIn ? '함께 인증할수록 진행도가 차올라요' : '로그인 없이도 친구를 초대할 수 있어요';
+      title = '친구와 함께 챌린지';
+      detail = signedIn ? '정리·책 읽기·운동 등 할 일과 기간을 정해 함께 해요' : '로그인 없이도 친구를 초대할 수 있어요';
     }
     return Material(
       color: JdColors.togetherTint,

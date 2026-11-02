@@ -195,12 +195,12 @@ class TodayCollage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            all ? '🎉 오늘 모두 정리 완료!' : '오늘 $memberCount명 중 $done명이 정리했어요',
+            all ? '🎉 오늘 모두 인증 완료!' : '오늘 $memberCount명 중 $done명이 인증했어요',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: all ? Colors.white : JdColors.ink),
           ),
           const SizedBox(height: 2),
           Text(
-            all ? '같은 날, 각자의 자리에서 함께 정리했어요' : '아직 안 한 친구를 기다리고 있어요',
+            all ? '같은 날, 각자의 자리에서 함께 해냈어요' : '아직 안 한 친구를 기다리고 있어요',
             style: TextStyle(fontSize: 13, color: all ? Colors.white70 : JdColors.subtle),
           ),
           const SizedBox(height: 12),
