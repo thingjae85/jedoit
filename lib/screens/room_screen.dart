@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -33,11 +35,20 @@ String roomStatusTitle(RoomStatus status) => switch (status) {
 /// 방 화면: 모집(초대 QR) → 예약 → 3일 인증 → 종료 결과.
 /// 공동 책상 그림은 4단계에서 붙이고, 지금은 진행도를 숫자로 보여 준다.
 class RoomScreen extends StatefulWidget {
-  const RoomScreen({super.key, required this.rooms, required this.roomId, this.now = DateTime.now});
+  const RoomScreen({
+    super.key,
+    required this.rooms,
+    required this.roomId,
+    this.now = DateTime.now,
+    this.autoRefresh = const Duration(seconds: 8),
+  });
 
   final RoomService rooms;
   final String roomId;
   final DateTime Function() now;
+
+  /// 방 화면을 보는 동안 피드를 다시 불러오는 간격. null이면 끈다.
+  final Duration? autoRefresh;
 
   @override
   State<RoomScreen> createState() => _RoomScreenState();
@@ -50,11 +61,66 @@ class _RoomScreenState extends State<RoomScreen> {
   List<FeedItem> _feed = [];
   bool _loadFailed = false;
   bool _busy = false;
+  Timer? _timer;
+  bool _refreshing = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+    final every = widget.autoRefresh;
+    if (every != null) _timer = Timer.periodic(every, (_) => _autoRefresh());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  /// 친구가 인증하면 새로고침 없이 피드에 나타나고, 알림을 띄운다.
+  Future<void> _autoRefresh() async {
+    final s = _summary;
+    if (_refreshing || _busy || s == null || s.statusAt(widget.now()) != RoomStatus.active) return;
+    _refreshing = true;
+    try {
+      final before = {for (final f in _feed) f.key};
+      await _load();
+      if (!mounted) return;
+      final fresh = _feed.where((f) => !f.isMe && !before.contains(f.key)).toList();
+      for (final f in fresh.take(1)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${f.displayName}님이 방금 인증했어요! 응원해 주세요 👏')),
+        );
+      }
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  Future<void> _react(FeedItem item, Reaction r) async {
+    final i = _feed.indexWhere((f) => f.key == item.key);
+    if (i < 0) return;
+    setState(() => _feed[i] = item.withReaction(r, !item.mine(r)));
+    try {
+      final on = await widget.rooms.toggleReaction(widget.roomId, item, r);
+      final j = _feed.indexWhere((f) => f.key == item.key);
+      if (mounted && j >= 0) setState(() => _feed[j] = item.withReaction(r, on));
+    } catch (e) {
+      final j = _feed.indexWhere((f) => f.key == item.key);
+      if (!mounted) return;
+      if (j >= 0) setState(() => _feed[j] = item);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(roomErrorMessage(e))));
+    }
+  }
+
+  int _avatarIndexOf(FeedItem item) =>
+      _members.indexWhere((m) => m.nickname == item.nickname && m.nicknameNo == item.nicknameNo).clamp(0, 99);
+
+  /// 오늘(한국 시간) 인증만
+  List<FeedItem> _todayFeed() {
+    final k = widget.now().toUtc().add(const Duration(hours: 9));
+    return _feed.where((f) => f.date.year == k.year && f.date.month == k.month && f.date.day == k.day).toList();
   }
 
   Future<void> _load() async {
@@ -240,6 +306,8 @@ class _RoomScreenState extends State<RoomScreen> {
             ],
           ),
           const SizedBox(height: 10),
+          if (status == RoomStatus.active && _todayFeed().isNotEmpty)
+            TodayCollage(items: _todayFeed(), memberCount: _members.length, avatarIndexOf: _avatarIndexOf),
           if (_feed.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
@@ -247,9 +315,10 @@ class _RoomScreenState extends State<RoomScreen> {
             ),
           for (final item in _feed)
             FeedCard(
+              key: ValueKey(item.key),
               item: item,
-              avatarIndex: _members.indexWhere((m) => m.nickname == item.nickname && m.nicknameNo == item.nicknameNo)
-                  .clamp(0, 99),
+              avatarIndex: _avatarIndexOf(item),
+              onReact: (r) => _react(item, r),
             ),
         ],
         if (_mine.isNotEmpty) ...[

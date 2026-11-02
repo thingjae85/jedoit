@@ -7,10 +7,13 @@ import 'jd_widgets.dart';
 
 /// 방 피드의 인증 카드. 결과 사진·동영상, 전후 넘겨 보기, 가벼운 한 줄을 한 모양으로 보여 준다.
 class FeedCard extends StatelessWidget {
-  const FeedCard({super.key, required this.item, required this.avatarIndex});
+  const FeedCard({super.key, required this.item, required this.avatarIndex, this.onReact});
 
   final FeedItem item;
   final int avatarIndex;
+
+  /// 친구 인증에 응원 누르기. 내 인증이면 개수만 보여 준다.
+  final void Function(Reaction reaction)? onReact;
 
   @override
   Widget build(BuildContext context) {
@@ -74,9 +77,198 @@ class FeedCard extends StatelessWidget {
               padding: EdgeInsets.fromLTRB(14, 0, 14, 0),
               child: Text('사진을 삭제한 인증이에요', style: TextStyle(fontSize: 13, color: JdColors.faint)),
             ),
-          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+            child: Row(
+              children: [
+                for (final r in Reaction.values)
+                  ReactionButton(
+                    key: Key('reaction-${item.key}-${r.serverName}'),
+                    reaction: r,
+                    count: item.count(r),
+                    pressed: item.mine(r),
+                    onTap: item.isMe || onReact == null ? null : () => onReact!(r),
+                  ),
+                if (item.isMe && item.claps + item.fires > 0) ...[
+                  const SizedBox(width: 4),
+                  const Text('친구들이 응원했어요', style: TextStyle(fontSize: 12, color: JdColors.faint)),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
         ],
       ),
+    );
+  }
+}
+
+/// 👏 3 같은 응원 버튼. 누르면 살짝 튀어 오른다.
+class ReactionButton extends StatefulWidget {
+  const ReactionButton({super.key, required this.reaction, required this.count, required this.pressed, this.onTap});
+
+  final Reaction reaction;
+  final int count;
+  final bool pressed;
+  final VoidCallback? onTap;
+
+  @override
+  State<ReactionButton> createState() => _ReactionButtonState();
+}
+
+class _ReactionButtonState extends State<ReactionButton> with SingleTickerProviderStateMixin {
+  late final _bounce = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
+
+  @override
+  void dispose() {
+    _bounce.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final on = widget.pressed;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Material(
+        color: on ? JdColors.togetherChip : JdColors.panel,
+        shape: StadiumBorder(side: BorderSide(color: on ? JdColors.togetherFill : JdColors.line, width: 1.5)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: widget.onTap == null
+              ? null
+              : () {
+                  _bounce.forward(from: 0);
+                  widget.onTap!();
+                },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ScaleTransition(
+                  scale: TweenSequence([
+                    TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.45), weight: 1),
+                    TweenSequenceItem(tween: Tween(begin: 1.45, end: 1.0), weight: 1),
+                  ]).animate(CurvedAnimation(parent: _bounce, curve: Curves.easeOut)),
+                  child: Text(widget.reaction.emoji, style: const TextStyle(fontSize: 17)),
+                ),
+                if (widget.count > 0) ...[
+                  const SizedBox(width: 5),
+                  Text('${widget.count}',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: on ? JdColors.togetherText : JdColors.subtle)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 오늘의 콜라주: 오늘 인증한 친구들의 사진을 한 장처럼 모아 보여 준다.
+class TodayCollage extends StatelessWidget {
+  const TodayCollage({super.key, required this.items, required this.memberCount, required this.avatarIndexOf});
+
+  final List<FeedItem> items;
+  final int memberCount;
+  final int Function(FeedItem) avatarIndexOf;
+
+  @override
+  Widget build(BuildContext context) {
+    final done = items.length;
+    final all = memberCount > 0 && done >= memberCount;
+    final cols = done <= 1 ? 1 : 2;
+    return Container(
+      key: const Key('todayCollage'),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: all ? JdColors.together : JdColors.togetherTint,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            all ? '🎉 오늘 모두 정리 완료!' : '오늘 $memberCount명 중 $done명이 정리했어요',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: all ? Colors.white : JdColors.ink),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            all ? '같은 날, 각자의 자리에서 함께 정리했어요' : '아직 안 한 친구를 기다리고 있어요',
+            style: TextStyle(fontSize: 13, color: all ? Colors.white70 : JdColors.subtle),
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: GridView.count(
+              crossAxisCount: cols,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 3,
+              crossAxisSpacing: 3,
+              childAspectRatio: cols == 1 ? 4 / 3 : 1,
+              children: [for (final item in items) _CollageTile(item: item, avatarIndex: avatarIndexOf(item))],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CollageTile extends StatelessWidget {
+  const _CollageTile({required this.item, required this.avatarIndex});
+  final FeedItem item;
+  final int avatarIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget back;
+    if (item.media == FeedMedia.photo && item.mediaUrl != null) {
+      back = _NetImage(item.mediaUrl!);
+    } else if (item.media == FeedMedia.video && item.mediaUrl != null) {
+      back = const ColoredBox(
+        color: Colors.black87,
+        child: Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 40)),
+      );
+    } else {
+      back = ColoredBox(
+        color: JdColors.avatars[avatarIndex % JdColors.avatars.length],
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              (item.note ?? '').isEmpty ? '✓ 했어요' : item.note!,
+              textAlign: TextAlign.center,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+      );
+    }
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        back,
+        Positioned(
+          left: 8,
+          bottom: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
+            child: Text(item.displayName,
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ],
     );
   }
 }

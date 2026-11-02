@@ -171,6 +171,16 @@ class MyCheckin {
 
 enum FeedMedia { photo, video, none }
 
+/// 응원 리액션
+enum Reaction {
+  clap('clap', '👏'),
+  fire('fire', '🔥');
+
+  const Reaction(this.serverName, this.emoji);
+  final String serverName;
+  final String emoji;
+}
+
 /// 방 피드의 인증 카드 하나. 파일 주소는 서버가 잠깐 쓸 수 있게 발급한 주소다.
 class FeedItem {
   const FeedItem({
@@ -184,6 +194,10 @@ class FeedItem {
     this.note,
     this.beforeUrl,
     this.beforeNote,
+    this.claps = 0,
+    this.fires = 0,
+    this.myClap = false,
+    this.myFire = false,
   });
 
   final String nickname;
@@ -196,6 +210,37 @@ class FeedItem {
   final String? note;
   final String? beforeUrl;
   final String? beforeNote;
+  final int claps;
+  final int fires;
+  final bool myClap;
+  final bool myFire;
+
+  /// 카드 구분: 같은 사람의 같은 날 인증은 하나뿐이다.
+  String get key => '$nickname#$nicknameNo@${date.year}-${date.month}-${date.day}';
+
+  int count(Reaction r) => r == Reaction.clap ? claps : fires;
+  bool mine(Reaction r) => r == Reaction.clap ? myClap : myFire;
+
+  /// 리액션을 누르거나 취소한 결과를 바로 화면에 반영할 때 쓴다.
+  FeedItem withReaction(Reaction r, bool on) {
+    final delta = on == mine(r) ? 0 : (on ? 1 : -1);
+    return FeedItem(
+      nickname: nickname,
+      nicknameNo: nicknameNo,
+      isMe: isMe,
+      date: date,
+      checkedAt: checkedAt,
+      media: media,
+      mediaUrl: mediaUrl,
+      note: note,
+      beforeUrl: beforeUrl,
+      beforeNote: beforeNote,
+      claps: r == Reaction.clap ? claps + delta : claps,
+      fires: r == Reaction.fire ? fires + delta : fires,
+      myClap: r == Reaction.clap ? on : myClap,
+      myFire: r == Reaction.fire ? on : myFire,
+    );
+  }
 
   String get displayName => nicknameNo > 1 ? '$nickname $nicknameNo' : nickname;
 

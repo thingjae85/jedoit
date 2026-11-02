@@ -101,6 +101,14 @@ class _FakeRooms implements RoomService {
   @override
   Future<List<FeedItem>> feed(String roomId) async => feedItems;
 
+  final reactions = <String>[];
+
+  @override
+  Future<bool> toggleReaction(String roomId, FeedItem item, Reaction reaction) async {
+    reactions.add('${item.nickname}:${reaction.serverName}');
+    return !item.mine(reaction);
+  }
+
   List<MyCheckin> mine = [];
   final actions = <String>[];
 
@@ -151,11 +159,20 @@ Uint8List _fakeMp4(double seconds, {int version = 0}) {
   return b.toBytes();
 }
 
-FeedItem _feedItem({String nick = '철수', FeedMedia media = FeedMedia.photo, String? url, String? note, String? beforeUrl, String? beforeNote}) =>
+FeedItem _feedItem(
+        {String nick = '철수',
+        FeedMedia media = FeedMedia.photo,
+        String? url,
+        String? note,
+        String? beforeUrl,
+        String? beforeNote,
+        bool isMe = false,
+        int claps = 0}) =>
     FeedItem(
       nickname: nick,
       nicknameNo: 1,
-      isMe: false,
+      isMe: isMe,
+      claps: claps,
       date: DateTime(2026, 11, 11),
       checkedAt: DateTime(2026, 11, 11, 21, 5),
       media: media,
@@ -484,11 +501,74 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(FeedCard), findsNWidgets(2));
-    expect(find.text('서랍 정리 끝'), findsOneWidget);
+    expect(find.text('서랍 정리 끝'), findsWidgets);
     Text note() => tester.widget<Text>(find.byKey(const Key('beforeAfterNote')));
     expect(note().data, '엉망');
     await tester.drag(find.byKey(const Key('beforeAfterPager')), const Offset(-500, 0));
     await tester.pumpAndSettle();
     expect(note().data, '깨끗!');
+  });
+
+  testWidgets('응원: 친구 인증에 👏를 누르면 바로 1이 되고, 내 인증에는 누를 수 없다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 2, active: 2, n0: 2, goal: 4, total: 6)
+      ..feedItems = [
+        _feedItem(nick: '영희', media: FeedMedia.none, note: '서랍 정리 끝'),
+        _feedItem(nick: '명재', media: FeedMedia.none, note: '책상 끝', isMe: true, claps: 2),
+      ];
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now, autoRefresh: null)));
+    await tester.pumpAndSettle();
+
+    final friendClap = find.byKey(const Key('reaction-영희#1@2026-11-11-clap'));
+    await tester.tap(friendClap);
+    await tester.pumpAndSettle();
+    expect(rooms.reactions, ['영희:clap']);
+    expect(find.descendant(of: friendClap, matching: find.text('1')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('reaction-명재#1@2026-11-11-clap')));
+    await tester.pumpAndSettle();
+    expect(rooms.reactions, ['영희:clap']);
+    expect(find.text('친구들이 응원했어요'), findsOneWidget);
+  });
+
+  testWidgets('오늘의 콜라주: 모두 인증하면 완료 문구로 바뀐다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 1, active: 2, n0: 2, goal: 4, total: 6)
+      ..people = [
+        const RoomMember(nickname: '명재', nicknameNo: 1, isMe: true, isHost: true, checkins: 0),
+        const RoomMember(nickname: '영희', nicknameNo: 1, isMe: false, isHost: false, checkins: 1),
+      ]
+      ..feedItems = [_feedItem(nick: '영희', media: FeedMedia.none, note: '서랍 정리 끝')];
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now, autoRefresh: null)));
+    await tester.pumpAndSettle();
+    expect(find.text('오늘 2명 중 1명이 정리했어요'), findsOneWidget);
+
+    rooms.feedItems = [
+      _feedItem(nick: '명재', media: FeedMedia.none, note: '책상 끝', isMe: true),
+      ...rooms.feedItems,
+    ];
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pumpAndSettle();
+    expect(find.text('🎉 오늘 모두 정리 완료!'), findsOneWidget);
+  });
+
+  testWidgets('자동 새로고침: 친구가 인증하면 피드에 나타나고 알림이 뜬다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 0, active: 2, n0: 2, goal: 4, total: 6);
+    await tester.pumpWidget(_wrap(
+        RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now, autoRefresh: const Duration(seconds: 5))));
+    await tester.pumpAndSettle();
+    expect(find.byType(FeedCard), findsNothing);
+
+    rooms.feedItems = [_feedItem(nick: '영희', media: FeedMedia.none, note: '서랍 정리 끝')];
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(FeedCard), findsOneWidget);
+    expect(find.text('영희님이 방금 인증했어요! 응원해 주세요 👏'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   });
 }
