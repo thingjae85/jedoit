@@ -168,8 +168,8 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _confirmStart() async {
     final ok = await _ask('시작을 확정할까요?',
-        '지금 참가한 ${_members.length}명으로 내일 00:00에 시작해 ${_summary?.days ?? 3}일 동안 진행해요. 확정 후에는 새로 참가할 수 없어요.');
-    if (ok) await _run(() => widget.rooms.confirmStart(widget.roomId), done: '내일 00:00에 시작해요');
+        '지금 참가한 ${_members.length}명으로 오늘부터 바로 시작해 ${_summary?.days ?? 3}일 동안 진행해요. 오늘이 1일차예요. 확정 후에는 새로 참가할 수 없어요.');
+    if (ok) await _run(() => widget.rooms.confirmStart(widget.roomId), done: '시작했어요! 오늘 첫 인증을 올려 보세요');
     await _load();
   }
 
