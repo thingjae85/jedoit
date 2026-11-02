@@ -167,16 +167,36 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _confirmStart() async {
-    final late = startsTomorrow(widget.now());
+    final late = suggestTomorrow(widget.now());
     final days = _summary?.days ?? 3;
-    final ok = await _ask(
-        '시작을 확정할까요?',
-        late
-            ? '지금 참가한 ${_members.length}명으로 내일 0시에 시작해 $days일 동안 진행해요. 저녁 $lateStartHour시가 넘어서 오늘은 빼고 내일이 1일차예요. 확정 후에는 새로 참가할 수 없어요.'
-            : '지금 참가한 ${_members.length}명으로 오늘부터 바로 시작해 $days일 동안 진행해요. 오늘이 1일차예요. 확정 후에는 새로 참가할 수 없어요.');
-    if (ok) {
-      await _run(() => widget.rooms.confirmStart(widget.roomId),
-          done: late ? '확정했어요! 내일 0시에 시작해요' : '시작했어요! 오늘 첫 인증을 올려 보세요');
+    final tomorrow = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        Widget choice(bool t) {
+          final label = Text(t ? '내일부터' : '오늘부터');
+          void pick() => Navigator.of(ctx).pop(t);
+          return t == late
+              ? FilledButton(key: Key(t ? 'startTomorrow' : 'startToday'), onPressed: pick, child: label)
+              : OutlinedButton(key: Key(t ? 'startTomorrow' : 'startToday'), onPressed: pick, child: label);
+        }
+
+        return AlertDialog(
+          title: const Text('언제부터 시작할까요?'),
+          content: Text('지금 참가한 ${_members.length}명으로 $days일 동안 진행해요.\n'
+              '오늘부터: 오늘이 1일차예요.\n'
+              '내일부터: 내일 0시에 시작해요.${late ? ' 저녁이라 내일부터를 추천해요.' : ''}\n'
+              '확정 후에는 새로 참가할 수 없어요.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('취소')),
+            choice(false),
+            choice(true),
+          ],
+        );
+      },
+    );
+    if (tomorrow != null) {
+      await _run(() => widget.rooms.confirmStart(widget.roomId, tomorrow: tomorrow),
+          done: tomorrow ? '확정했어요! 내일 0시에 시작해요' : '시작했어요! 오늘 첫 인증을 올려 보세요');
     }
     await _load();
   }

@@ -39,11 +39,11 @@ enum ChallengeKind {
 }
 
 /// 챌린지 기간 범위와 빠르게 더하는 버튼
-/// 이 시각(한국 시간) 이후에 시작을 확정하면 다음 날 0시에 시작한다.
+/// 이 시각(한국 시간)부터는 시작 확정 때 '내일부터'를 먼저 권한다.
 const lateStartHour = 18;
 
-/// [now]에 시작을 확정하면 내일 시작하는지 (한국 시간 기준).
-bool startsTomorrow(DateTime now) => now.toUtc().add(const Duration(hours: 9)).hour >= lateStartHour;
+/// [now]에 시작을 확정할 때 '내일부터'를 권하는지 (한국 시간 기준).
+bool suggestTomorrow(DateTime now) => now.toUtc().add(const Duration(hours: 9)).hour >= lateStartHour;
 
 const minChallengeDays = 3;
 const maxChallengeDays = 60;
