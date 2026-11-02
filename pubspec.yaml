@@ -24,3 +24,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: JdSans
+      fonts:
+        - asset: assets/fonts/JdSans-Regular.otf
+        - asset: assets/fonts/JdSans-Bold.otf
+          weight: 700
+        - asset: assets/fonts/JdSans-ExtraBold.otf
+          weight: 800

@@ -27,6 +27,10 @@ abstract final class JdColors {
   static const avatars = [soloTint, togetherChip, Color(0xFFEEEAFE), Color(0xFFE3EFFB), Color(0xFFFFF4D6)];
 }
 
+/// 앱 글꼴: Pretendard를 앱에 필요한 글자만 남겨 줄인 것 (assets/fonts 참고).
+/// 없는 글자는 브라우저 기본 한글 글꼴로 보인다.
+const jdFont = 'JdSans';
+
 ThemeData buildTheme() {
   final scheme = ColorScheme.fromSeed(
     seedColor: JdColors.solo,
@@ -36,6 +40,7 @@ ThemeData buildTheme() {
   final rounded = RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
   return ThemeData(
     useMaterial3: true,
+    fontFamily: jdFont,
     colorScheme: scheme,
     scaffoldBackgroundColor: Colors.white,
     appBarTheme: const AppBarTheme(
@@ -45,7 +50,7 @@ ThemeData buildTheme() {
       centerTitle: false,
       elevation: 0,
       scrolledUnderElevation: 0,
-      titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: JdColors.ink),
+      titleTextStyle: TextStyle(fontFamily: jdFont, fontSize: 17, fontWeight: FontWeight.w700, color: JdColors.ink),
     ),
     cardTheme: CardThemeData(
       color: JdColors.panel,
@@ -57,11 +62,23 @@ ThemeData buildTheme() {
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(52),
         shape: rounded,
-        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        textStyle: const TextStyle(fontFamily: jdFont, fontSize: 16, fontWeight: FontWeight.w700),
+        elevation: 0,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: rounded),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(48),
+        shape: rounded,
+        foregroundColor: JdColors.ink,
+        side: const BorderSide(color: JdColors.box),
+        textStyle: const TextStyle(fontFamily: jdFont, fontSize: 15, fontWeight: FontWeight.w700),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        textStyle: const TextStyle(fontFamily: jdFont, fontSize: 14, fontWeight: FontWeight.w700),
+      ),
     ),
     checkboxTheme: CheckboxThemeData(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
@@ -71,6 +88,13 @@ ThemeData buildTheme() {
       filled: true,
       fillColor: JdColors.panel,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: JdColors.solo, width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      hintStyle: const TextStyle(fontFamily: jdFont, color: JdColors.faint),
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: Colors.white,
@@ -78,12 +102,30 @@ ThemeData buildTheme() {
       indicatorColor: JdColors.soloTint,
       height: 64,
       labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
+            fontFamily: jdFont,
             fontSize: 12,
             fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w400,
             color: states.contains(WidgetState.selected) ? JdColors.ink : JdColors.faint,
           )),
     ),
-    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: JdColors.ink,
+      contentTextStyle: const TextStyle(fontFamily: jdFont, fontSize: 14, color: Colors.white),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      titleTextStyle: const TextStyle(fontFamily: jdFont, fontSize: 19, fontWeight: FontWeight.w800, color: JdColors.ink),
+      contentTextStyle: const TextStyle(fontFamily: jdFont, fontSize: 15, height: 1.45, color: JdColors.subtle),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ),
     dividerTheme: const DividerThemeData(color: JdColors.line, thickness: 1, space: 1),
   );
 }

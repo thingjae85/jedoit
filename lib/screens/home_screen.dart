@@ -780,37 +780,59 @@ class _MyPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final account = this.account;
     return Scaffold(
-      appBar: AppBar(title: const Text('마이')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-        children: [
-          if (account == null)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('기록은 이 기기·브라우저에만 저장돼요.',
-                    style: TextStyle(fontSize: 13)),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          children: [
+            const Text('마이',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+            const SizedBox(height: 16),
+            if (account == null)
+              const _MyGroup(children: [
+                ListTile(
+                  leading: Icon(Icons.phone_iphone),
+                  title: Text('기록은 이 기기·브라우저에만 저장돼요.', style: TextStyle(fontSize: 14)),
+                ),
+              ])
+            else
+              ListenableBuilder(
+                listenable: account,
+                builder: (context, _) => _AccountCard(
+                    account: account, onSignIn: onSignIn, onDelete: onDelete),
               ),
-            )
-          else
-            ListenableBuilder(
-              listenable: account,
-              builder: (context, _) => _AccountCard(
-                  account: account, onSignIn: onSignIn, onDelete: onDelete),
+            const SizedBox(height: 24),
+            const Padding(
+              padding: EdgeInsets.only(left: 4, bottom: 8),
+              child: Text('발표·인터뷰용', style: TextStyle(fontSize: 13, color: JdColors.faint)),
             ),
-          const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.compare_outlined),
-            title: const Text('시안 비교'),
-            subtitle: const Text('인터뷰용 공동 책상 시안'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: onDesignCompare,
-          ),
-        ],
+            _MyGroup(children: [
+              ListTile(
+                leading: const Icon(Icons.compare_outlined),
+                title: const Text('시안 비교'),
+                subtitle: const Text('인터뷰용 공동 책상 시안'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onDesignCompare,
+              ),
+            ]),
+          ],
+        ),
       ),
     );
   }
+}
+
+/// 마이 화면의 둥근 묶음 상자
+class _MyGroup extends StatelessWidget {
+  const _MyGroup({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: JdColors.panel,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: children),
+      );
 }
 
 Future<bool> _confirmGuestSignOut(BuildContext context) async {
@@ -838,51 +860,80 @@ class _AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: account.signedIn
-            ? Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      account.isGuest
-                          ? '게스트로 참여 중이에요 (테스트).\n이 브라우저에서만 이어서 쓸 수 있어요.'
-                          : '${account.email ?? 'Google 계정'}로 로그인했어요.\n기록이 내 계정에도 저장돼요.',
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: '계정',
-                    onSelected: (v) async {
-                      if (v != 'out') return onDelete();
-                      // 게스트는 로그아웃하면 같은 계정으로 다시 들어올 방법이 없다.
-                      if (account.isGuest && !await _confirmGuestSignOut(context)) return;
-                      await account.signOut();
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'out', child: Text('로그아웃')),
-                      PopupMenuItem(value: 'delete', child: Text('계정 삭제 요청')),
-                    ],
-                  ),
-                ],
-              )
-            : Column(
+    if (!account.signedIn) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: JdColors.soloTint, borderRadius: BorderRadius.circular(20)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('로그인하고 이어서 쓰기', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            const Text(
+              '로그인하면 기록을 계정에 저장하고 친구와 방을 만들 수 있어요.',
+              style: TextStyle(fontSize: 14, color: JdColors.subtle),
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: onSignIn,
+              icon: const Icon(Icons.login),
+              label: const Text('Google로 로그인'),
+            ),
+          ],
+        ),
+      );
+    }
+    final name = account.isGuest ? '게스트' : (account.email ?? 'Google 계정');
+    return Column(
+      children: [
+        Row(
+          children: [
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: account.isGuest ? JdColors.togetherChip : JdColors.soloTint,
+              child: Icon(account.isGuest ? Icons.person_outline : Icons.person,
+                  color: account.isGuest ? JdColors.togetherText : JdColors.soloText, size: 30),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '로그인하면 기록을 계정에 저장하고 친구와 방을 만들 수 있어요.',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: onSignIn,
-                    icon: const Icon(Icons.login),
-                    label: const Text('Google로 로그인'),
+                  Text(name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(
+                    account.isGuest
+                        ? '게스트로 참여 중이에요 (테스트). 이 브라우저에서만 이어서 쓸 수 있어요.'
+                        : 'Google로 로그인했어요. 기록이 내 계정에도 저장돼요.',
+                    style: const TextStyle(fontSize: 13, color: JdColors.subtle),
                   ),
                 ],
               ),
-      ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _MyGroup(children: [
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('로그아웃'),
+            onTap: () async {
+              // 게스트는 로그아웃하면 같은 계정으로 다시 들어올 방법이 없다.
+              if (account.isGuest && !await _confirmGuestSignOut(context)) return;
+              await account.signOut();
+            },
+          ),
+          const Divider(height: 1, indent: 56),
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: JdColors.together),
+            title: const Text('계정 삭제 요청', style: TextStyle(color: JdColors.together)),
+            onTap: onDelete,
+          ),
+        ]),
+      ],
     );
   }
 }

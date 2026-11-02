@@ -177,16 +177,12 @@ void main() {
     await tester.tap(find.text('마이'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('계정'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('계정 삭제 요청'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
     expect(account.deletionRequested, isFalse);
 
-    await tester.tap(find.byTooltip('계정'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('계정 삭제 요청'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('삭제 요청'));

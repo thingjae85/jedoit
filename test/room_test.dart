@@ -305,7 +305,7 @@ void main() {
     final photo = img.encodePng(img.Image(width: 40, height: 30));
     await tester.pumpWidget(_wrap(CheckInScreen(rooms: rooms, roomId: 'room-1', picker: () async => PickedFile(photo, 'a.png'))));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(OutlinedButton, '사진'));
+    await tester.tap(find.text('사진'));
     await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '인증 저장')).onPressed, isNull);
     await tester.ensureVisible(find.text('오늘 5분 정리를 실제로 했어요'));
@@ -428,12 +428,12 @@ void main() {
       videoPicker: () async => PickedFile(clip, 'clip.mp4'),
     )));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('동영상 (5초 미만)'));
+    await tester.tap(find.text('동영상'));
     await tester.pumpAndSettle();
     expect(find.textContaining('5초 미만 동영상만'), findsOneWidget);
 
     clip = _fakeMp4(3);
-    await tester.tap(find.text('동영상 (5초 미만)'));
+    await tester.tap(find.text('동영상'));
     await tester.pumpAndSettle();
     expect(find.text('동영상 3.0초 선택됨'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextField, '한 줄 (선택)'), '책상 위 싹 비움');

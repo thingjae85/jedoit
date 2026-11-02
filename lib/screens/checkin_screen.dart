@@ -188,13 +188,31 @@ class _CheckInScreenState extends State<CheckInScreen> {
       CheckinMode.result => '오늘 정리 인증',
       CheckinMode.beforeAfter => _beforeStep ? '정리 전 사진' : '정리 후 사진',
     };
+    final subtitle = switch (_mode) {
+      CheckinMode.light => '사진 없이 오늘 한 일을 한 줄로 남겨요.\n방 친구들 피드에 바로 보여요.',
+      CheckinMode.result => '다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요.',
+      CheckinMode.beforeAfter => _beforeStep
+          ? '정리를 시작하기 전에 지금 모습을 찍어 두세요.\n끝나면 후 사진과 나란히 보여 줘요.'
+          : '정리를 마쳤으면 같은 자리를 다시 찍어 주세요.',
+    };
+    final step = _mode == CheckinMode.beforeAfter ? (_beforeStep ? '1 / 2 단계' : '2 / 2 단계') : null;
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(),
       body: _loadingBefore
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
               children: [
+                if (step != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(step,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.together)),
+                  ),
+                Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                const SizedBox(height: 6),
+                Text(subtitle, style: const TextStyle(fontSize: 15, height: 1.45, color: JdColors.subtle)),
+                const SizedBox(height: 20),
                 ...switch (_mode) {
                   CheckinMode.light => _light(),
                   CheckinMode.result => _result(),
@@ -202,35 +220,69 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 },
                 if (_error != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.only(top: 12),
                     child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                   ),
               ],
             ),
+      bottomNavigationBar: _loadingBefore
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                child: _beforeStep
+                    ? _primary('전 사진 올리기', _beforePhoto != null && !_busy ? _saveBefore : null)
+                    : _primary(_mode == CheckinMode.light ? '했어요' : '인증 저장', _canSubmit ? _submit : null),
+              ),
+            ),
     );
   }
+
+  Widget _primary(String label, VoidCallback? onPressed) => FilledButton(
+        style: FilledButton.styleFrom(
+          backgroundColor: JdColors.together,
+          disabledBackgroundColor: JdColors.empty,
+          minimumSize: const Size.fromHeight(56),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        ),
+        onPressed: onPressed,
+        child: Text(_busy ? '올리는 중...' : label),
+      );
 
   Widget _noteField(TextEditingController c, String label, {String? hint}) => TextField(
         controller: c,
         enabled: !_busy,
         maxLength: _noteMax,
-        decoration: InputDecoration(labelText: label, hintText: hint),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          floatingLabelBehavior: FloatingLabelBehavior.always,
+          counterText: '',
+        ),
         onChanged: (_) => setState(() {}),
       );
 
-  Widget _doneCheck() => CheckboxListTile(
-        value: _checked,
-        onChanged: _busy ? null : (v) => setState(() => _checked = v ?? false),
-        title: const Text('오늘 5분 정리를 실제로 했어요'),
-        controlAffinity: ListTileControlAffinity.leading,
-        contentPadding: EdgeInsets.zero,
+  Widget _doneCheck() => Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Material(
+          color: _checked ? JdColors.togetherTint : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: _checked ? JdColors.togetherFill : JdColors.line, width: 1.5),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: CheckboxListTile(
+            value: _checked,
+            onChanged: _busy ? null : (v) => setState(() => _checked = v ?? false),
+            title: const Text('오늘 5분 정리를 실제로 했어요', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            controlAffinity: ListTileControlAffinity.leading,
+            activeColor: JdColors.together,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+        ),
       );
 
-  Widget _submitButton(String label) => FilledButton(
-        style: FilledButton.styleFrom(backgroundColor: JdColors.together),
-        onPressed: _canSubmit ? _submit : null,
-        child: Text(_busy ? '올리는 중...' : label),
-      );
+  bool _noticeOpen = false;
 
   static const _shareNotice = '· 이 방의 현재 참가자에게 공유돼요\n'
       '· 서버에 저장돼요 (사진의 위치정보는 지우고 올려요)\n'
@@ -238,133 +290,165 @@ class _CheckInScreenState extends State<CheckInScreen> {
       '· 테스트가 끝나면 7일 안에 삭제돼요\n'
       '얼굴·주소·문서가 찍히지 않았는지 미리보기에서 확인해 주세요.';
 
-  Widget _notice() => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Text(_shareNotice, style: Theme.of(context).textTheme.bodySmall),
+  Widget _notice() => Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => setState(() => _noticeOpen = !_noticeOpen),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lock_outline, size: 16, color: JdColors.faint),
+                    const SizedBox(width: 6),
+                    const Expanded(
+                      child: Text('방 친구에게만 보여요 · 위치정보는 지우고 올려요',
+                          style: TextStyle(fontSize: 13, color: JdColors.faint)),
+                    ),
+                    Icon(_noticeOpen ? Icons.expand_less : Icons.expand_more, size: 18, color: JdColors.faint),
+                  ],
+                ),
+              ),
+            ),
+            if (_noticeOpen)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: JdColors.panel, borderRadius: BorderRadius.circular(14)),
+                child: const Text(_shareNotice, style: TextStyle(fontSize: 13, height: 1.5, color: JdColors.subtle)),
+              ),
+          ],
         ),
       );
 
-  Widget _photoPreview(Uint8List bytes, {String? label}) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+  /// 고른 사진 미리보기. 오른쪽 위 버튼으로 다시 고른다.
+  Widget _photoPreview(Uint8List bytes, {String? label, required VoidCallback onChange}) => ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: AspectRatio(
+          aspectRatio: 4 / 3,
           child: Stack(
+            fit: StackFit.expand,
             children: [
-              Image.memory(bytes, height: 280, width: double.infinity, fit: BoxFit.cover),
-              if (label != null) Positioned(left: 10, top: 10, child: _Badge(label)),
+              Image.memory(bytes, fit: BoxFit.cover),
+              if (label != null) Positioned(left: 12, top: 12, child: _Badge(label)),
+              Positioned(right: 10, top: 10, child: _ChangeButton(onTap: _busy ? null : onChange)),
             ],
           ),
         ),
       );
 
   List<Widget> _light() => [
-        const Text('사진 없이 오늘 한 일을 한 줄로 남겨요. 방 친구들 피드에 바로 보여요.',
-            style: TextStyle(fontSize: 15, color: JdColors.subtle)),
-        const SizedBox(height: 16),
         _noteField(_note, '오늘의 한 줄', hint: '예: 책상 왼쪽 서랍 정리 끝!'),
-        const SizedBox(height: 8),
-        _submitButton('했어요'),
       ];
 
   List<Widget> _result() => [
-        const Text('다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요.',
-            style: TextStyle(fontSize: 15, color: JdColors.subtle)),
-        const SizedBox(height: 12),
-        if (_photo != null) _photoPreview(_photo!),
-        if (_video != null)
+        if (_photo != null)
+          _photoPreview(_photo!, onChange: () => _choosePhoto())
+        else if (_video != null)
           Container(
-            height: 120,
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(color: JdColors.togetherTint, borderRadius: BorderRadius.circular(16)),
-            alignment: Alignment.center,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+            height: 160,
+            decoration: BoxDecoration(color: JdColors.ink, borderRadius: BorderRadius.circular(20)),
+            child: Stack(
               children: [
-                const Icon(Icons.videocam, color: JdColors.together),
-                const SizedBox(width: 8),
-                Text('동영상 ${_video!.seconds.toStringAsFixed(1)}초 선택됨',
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.play_circle_fill, color: Colors.white, size: 32),
+                      const SizedBox(width: 10),
+                      Text('동영상 ${_video!.seconds.toStringAsFixed(1)}초 선택됨',
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+                Positioned(right: 10, top: 10, child: _ChangeButton(onTap: _busy ? null : _chooseVideo)),
               ],
             ),
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: _PickTile(
+                  icon: Icons.add_photo_alternate_outlined,
+                  label: '사진',
+                  onTap: _busy ? null : () => _choosePhoto(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _PickTile(
+                  icon: Icons.videocam_outlined,
+                  label: '동영상',
+                  sub: '5초 미만',
+                  onTap: _busy ? null : _chooseVideo,
+                ),
+              ),
+            ],
           ),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : () => _choosePhoto(),
-                icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('사진'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : _chooseVideo,
-                icon: const Icon(Icons.videocam_outlined),
-                label: const Text('동영상 (5초 미만)'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         _noteField(_note, '한 줄 (선택)', hint: '어땠는지 한 줄 남겨 보세요'),
-        _notice(),
         _doneCheck(),
-        _submitButton('인증 저장'),
+        _notice(),
       ];
 
   List<Widget> _before() => [
-        const Text('정리를 시작하기 전에 지금 모습을 찍어 두세요. 끝나면 후 사진을 올려 나란히 보여 줘요.',
-            style: TextStyle(fontSize: 15, color: JdColors.subtle)),
-        const SizedBox(height: 12),
-        if (_beforePhoto != null) _photoPreview(_beforePhoto!, label: '전'),
-        OutlinedButton.icon(
-          onPressed: _busy ? null : () => _choosePhoto(before: true),
-          icon: const Icon(Icons.photo_library_outlined),
-          label: Text(_beforePhoto == null ? '전 사진 고르기' : '다른 사진 고르기'),
-        ),
-        const SizedBox(height: 12),
+        if (_beforePhoto != null)
+          _photoPreview(_beforePhoto!, label: '전', onChange: () => _choosePhoto(before: true))
+        else
+          AspectRatio(
+            aspectRatio: 4 / 3,
+            child: _PickTile(
+              icon: Icons.add_a_photo_outlined,
+              label: '전 사진 고르기',
+              onTap: _busy ? null : () => _choosePhoto(before: true),
+            ),
+          ),
+        const SizedBox(height: 16),
         _noteField(_beforeNote, '전 한 줄 (선택)', hint: '예: 서랍이 터지기 직전'),
         _notice(),
-        const SizedBox(height: 8),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: JdColors.together),
-          onPressed: _beforePhoto != null && !_busy ? _saveBefore : null,
-          child: Text(_busy ? '올리는 중...' : '전 사진 올리기'),
-        ),
       ];
 
   List<Widget> _after() {
     final before = _savedBefore!;
     return [
-      const Text('정리를 마쳤으면 같은 자리를 다시 찍어 주세요.', style: TextStyle(fontSize: 15, color: JdColors.subtle)),
-      const SizedBox(height: 12),
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(child: _halfShot('전', before.note, memory: _beforeImage, url: before.url)),
-          const SizedBox(width: 8),
-          Expanded(child: _halfShot('후', _note.text.trim(), memory: _photo)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _photo == null
+                ? AspectRatio(
+                    aspectRatio: 3 / 4,
+                    child: _PickTile(
+                      icon: Icons.add_a_photo_outlined,
+                      label: '후 사진 고르기',
+                      onTap: _busy ? null : () => _choosePhoto(),
+                    ),
+                  )
+                : _halfShot('후', _note.text.trim(), memory: _photo, onChange: () => _choosePhoto()),
+          ),
         ],
       ),
-      const SizedBox(height: 12),
-      OutlinedButton.icon(
-        onPressed: _busy ? null : () => _choosePhoto(),
-        icon: const Icon(Icons.photo_library_outlined),
-        label: Text(_photo == null ? '후 사진 고르기' : '다른 사진 고르기'),
-      ),
-      TextButton(
-        onPressed: _busy ? null : () => setState(() => _savedBefore = null),
-        child: const Text('전 사진 다시 올리기', style: TextStyle(color: JdColors.subtle)),
-      ),
+      const SizedBox(height: 16),
       _noteField(_note, '후 한 줄 (선택)', hint: '예: 서랍이 닫혀요!'),
       _doneCheck(),
-      _submitButton('인증 저장'),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          onPressed: _busy ? null : () => setState(() => _savedBefore = null),
+          child: const Text('전 사진 다시 올리기', style: TextStyle(color: JdColors.subtle)),
+        ),
+      ),
     ];
   }
 
-  Widget _halfShot(String label, String? note, {Uint8List? memory, String? url}) {
+  Widget _halfShot(String label, String? note, {Uint8List? memory, String? url, VoidCallback? onChange}) {
     final Widget image;
     if (memory != null) {
       image = Image.memory(memory, fit: BoxFit.cover);
@@ -377,20 +461,81 @@ class _CheckInScreenState extends State<CheckInScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           child: AspectRatio(
             aspectRatio: 3 / 4,
-            child: Stack(fit: StackFit.expand, children: [image, Positioned(left: 8, top: 8, child: _Badge(label))]),
+            child: Stack(fit: StackFit.expand, children: [
+              image,
+              Positioned(left: 8, top: 8, child: _Badge(label)),
+              if (onChange != null) Positioned(right: 6, top: 6, child: _ChangeButton(onTap: _busy ? null : onChange)),
+            ]),
           ),
         ),
         if (note != null && note.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(note, style: const TextStyle(fontSize: 13)),
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(note, style: const TextStyle(fontSize: 14)),
           ),
       ],
     );
   }
+}
+
+/// 비어 있는 사진·동영상 자리. 눌러서 고른다.
+class _PickTile extends StatelessWidget {
+  const _PickTile({required this.icon, required this.label, this.sub, this.onTap});
+
+  final IconData icon;
+  final String label;
+  final String? sub;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: JdColors.togetherTint,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 132),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: JdColors.togetherEmpty, width: 1.5),
+            ),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 34, color: JdColors.together),
+                const SizedBox(height: 8),
+                Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
+                if (sub != null) Text(sub!, style: const TextStyle(fontSize: 12, color: JdColors.subtle)),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _ChangeButton extends StatelessWidget {
+  const _ChangeButton({this.onTap});
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.black54,
+        shape: const StadiumBorder(),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Text('다시 고르기', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      );
 }
 
 class _Badge extends StatelessWidget {
