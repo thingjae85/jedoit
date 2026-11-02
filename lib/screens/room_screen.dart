@@ -167,9 +167,17 @@ class _RoomScreenState extends State<RoomScreen> {
   }
 
   Future<void> _confirmStart() async {
-    final ok = await _ask('시작을 확정할까요?',
-        '지금 참가한 ${_members.length}명으로 오늘부터 바로 시작해 ${_summary?.days ?? 3}일 동안 진행해요. 오늘이 1일차예요. 확정 후에는 새로 참가할 수 없어요.');
-    if (ok) await _run(() => widget.rooms.confirmStart(widget.roomId), done: '시작했어요! 오늘 첫 인증을 올려 보세요');
+    final late = startsTomorrow(widget.now());
+    final days = _summary?.days ?? 3;
+    final ok = await _ask(
+        '시작을 확정할까요?',
+        late
+            ? '지금 참가한 ${_members.length}명으로 내일 0시에 시작해 $days일 동안 진행해요. 저녁 $lateStartHour시가 넘어서 오늘은 빼고 내일이 1일차예요. 확정 후에는 새로 참가할 수 없어요.'
+            : '지금 참가한 ${_members.length}명으로 오늘부터 바로 시작해 $days일 동안 진행해요. 오늘이 1일차예요. 확정 후에는 새로 참가할 수 없어요.');
+    if (ok) {
+      await _run(() => widget.rooms.confirmStart(widget.roomId),
+          done: late ? '확정했어요! 내일 0시에 시작해요' : '시작했어요! 오늘 첫 인증을 올려 보세요');
+    }
     await _load();
   }
 
@@ -489,7 +497,10 @@ class _ProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = summary;
-    final ratio = s.totalElements == 0 ? 0.0 : (s.earned / s.totalElements).clamp(0.0, 1.0);
+    // 진행도는 공동 목표 기준: 목표를 채우면 100%
+    final goal = s.goal ?? s.totalElements;
+    final ratio = goal <= 0 ? 0.0 : (s.earned / goal).clamp(0.0, 1.0).toDouble();
+    final left = (goal - s.earned).clamp(0, goal);
     final members = s.activeCount;
     // 일차별 인증 인원 (시작일 기준, 한국 날짜)
     final start = s.startsAt == null ? null : _kstDay(s.startsAt!);
@@ -515,7 +526,7 @@ class _ProgressCard extends StatelessWidget {
               const Text('함께 진행도',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
               const Spacer(),
-              if (s.goal != null) Text('목표 ${s.goal}회', style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+              Text('목표 $goal회', style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
             ],
           ),
           const SizedBox(height: 14),
@@ -551,18 +562,19 @@ class _ProgressCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('${s.earned} / ${s.totalElements}',
+                    Text('${s.earned} / $goal',
                         key: const Key('progressText'),
                         style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, height: 1.1)),
                     const SizedBox(height: 6),
                     Text(
-                      s.goalReachedAt != null
-                          ? '공동 목표 ${s.goal}회 달성! 배지를 받았어요'
-                          : '공동 목표 ${s.goal}회까지 ${((s.goal ?? 0) - s.earned).clamp(0, 99)}회 남았어요',
+                      s.goalReachedAt != null || left == 0
+                          ? '공동 목표 달성! 배지를 받았어요'
+                          : '공동 목표까지 $left회 남았어요',
                       style: const TextStyle(fontSize: 14, color: Color(0xFF4A5056)),
                     ),
                     const SizedBox(height: 2),
-                    Text('현재 유효 인증 ${s.validCount}회', style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                    Text('모두 매일 하면 ${s.totalElements}회까지 채울 수 있어요',
+                        style: const TextStyle(fontSize: 12, color: JdColors.faint)),
                   ],
                 ),
               ),
