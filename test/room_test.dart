@@ -318,7 +318,7 @@ void main() {
     expect(img.decodeJpg(rooms.uploaded!), isNotNull);
   });
 
-  testWidgets('진행 중인 방에 공동 책상이 보이고, 사진 삭제와 인증 취소는 확인 후 진행된다', (tester) async {
+  testWidgets('진행 중인 방에 진행도가 보이고, 사진 삭제와 인증 취소는 확인 후 진행된다', (tester) async {
     tester.view.physicalSize = const Size(800, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -329,16 +329,15 @@ void main() {
     await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
     await tester.pumpAndSettle();
 
-    final desk = tester.widget<DeskView>(find.byType(DeskView));
-    expect(desk.total, 10);
-    expect(desk.tidied, 1);
+    expect(find.text('1 / 10'), findsOneWidget);
+    expect(find.text('10%'), findsOneWidget);
     expect(find.text('11/11 인증 완료'), findsOneWidget);
 
     await tester.tap(find.byTooltip('인증 관리'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('사진 삭제'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('완료 체크와 이미 정리된 책상 요소는 그대로'), findsOneWidget);
+    expect(find.textContaining('완료 체크와 이미 쌓인 진행도는 그대로'), findsOneWidget);
     await tester.tap(find.text('확인'));
     await tester.pumpAndSettle();
     expect(rooms.actions, ['photo 11']);
@@ -544,6 +543,8 @@ void main() {
     await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now, autoRefresh: null)));
     await tester.pumpAndSettle();
     expect(find.text('오늘 2명 중 1명이 정리했어요'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('day0')), matching: find.text('1/2명')), findsOneWidget);
+    expect(find.text('1일차 · 오늘'), findsOneWidget);
 
     rooms.feedItems = [
       _feedItem(nick: '명재', media: FeedMedia.none, note: '책상 끝', isMe: true),

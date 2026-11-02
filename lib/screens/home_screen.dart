@@ -135,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('계정 삭제를 요청할까요?'),
         content: const Text(
           '참여 중인 방에서 바로 나가고, 내 인증 사진은 지금부터 아무도 볼 수 없어요. '
-          '이미 정리된 책상 요소는 방에 남아요. 사진·기록·계정은 7일 안에 실제로 삭제돼요.',
+          '이미 쌓인 진행도는 방에 남아요. 사진·기록·계정은 7일 안에 실제로 삭제돼요.',
         ),
         actions: [
           TextButton(
@@ -716,14 +716,14 @@ class _ChallengeCard extends StatelessWidget {
     if (r != null) {
       title = roomStatusTitle(status!);
       detail = showProgress
-          ? '정리된 요소 ${r.earned} / ${r.totalElements}${r.goal != null ? ' · 목표 ${r.goal}개' : ''}'
+          ? '함께 진행도 ${r.earned} / ${r.totalElements}${r.goal != null ? ' · 목표 ${r.goal}회' : ''}'
           : '방에 들어가서 확인해 보세요';
     } else if (invited) {
       title = '초대받은 방이 있어요';
       detail = signedIn ? '눌러서 참가해 보세요' : '로그인 없이 닉네임만으로 참가할 수 있어요';
     } else {
       title = '친구와 3일 정리 챌린지';
-      detail = signedIn ? '함께 정리할수록 공동 책상이 정돈돼요' : '로그인 없이도 친구를 초대할 수 있어요';
+      detail = signedIn ? '함께 인증할수록 진행도가 차올라요' : '로그인 없이도 친구를 초대할 수 있어요';
     }
     return Material(
       color: JdColors.togetherTint,

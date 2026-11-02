@@ -8,7 +8,6 @@ import '../models/room.dart';
 import '../services/room_service.dart';
 import '../theme.dart';
 import '../utils/format.dart';
-import '../widgets/desk_view.dart';
 import '../widgets/jd_widgets.dart';
 import '../widgets/room_feed.dart';
 import 'checkin_screen.dart';
@@ -33,7 +32,6 @@ String roomStatusTitle(RoomStatus status) => switch (status) {
     };
 
 /// 방 화면: 모집(초대 QR) → 예약 → 3일 인증 → 종료 결과.
-/// 공동 책상 그림은 4단계에서 붙이고, 지금은 진행도를 숫자로 보여 준다.
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
     super.key,
@@ -180,7 +178,7 @@ class _RoomScreenState extends State<RoomScreen> {
     final ok = await _ask(
       '방에서 나갈까요?',
       active
-          ? '지금까지 정리한 요소는 방에 남고, 이후에는 인증과 방 보기가 끝나요.'
+          ? '지금까지 쌓은 진행도는 방에 남고, 이후에는 인증과 방 보기가 끝나요.'
           : '시작 전에 나가면 이 방은 취소되고, 모두 새 방을 만들 수 있어요.',
     );
     if (!ok) return;
@@ -205,7 +203,7 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _deletePhoto(MyCheckin c) async {
     final ok = await _ask('사진을 삭제할까요?',
-        '사진과 메모가 지워져요. 완료 체크와 이미 정리된 책상 요소는 그대로 남아요.');
+        '사진과 메모가 지워져요. 완료 체크와 이미 쌓인 진행도는 그대로 남아요.');
     if (!ok) return;
     await _run(() => widget.rooms.deletePhoto(widget.roomId, c.date), done: '사진을 삭제했어요');
     await _load();
@@ -213,7 +211,7 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _cancelCheckin(MyCheckin c) async {
     final ok = await _ask('인증을 취소할까요?',
-        '완료 체크가 취소되고 사진·메모가 지워져요. 현재 인증 수는 줄지만, 이미 정리된 책상 요소는 남아요. '
+        '완료 체크가 취소되고 사진·메모가 지워져요. 현재 인증 수는 줄지만, 이미 쌓인 진행도는 남아요. '
         '오늘 인증이라면 남은 사진 올리기 횟수 안에서 다시 인증할 수 있어요.');
     if (!ok) return;
     await _run(() => widget.rooms.cancelCheckin(widget.roomId, c.date), done: '인증을 취소했어요');
@@ -234,7 +232,7 @@ class _RoomScreenState extends State<RoomScreen> {
       await _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('오늘 인증했어요. 책상 요소 하나가 정리됐어요')),
+          const SnackBar(content: Text('오늘 인증했어요. 함께 진행도가 올라갔어요')),
         );
       }
     }
@@ -290,7 +288,7 @@ class _RoomScreenState extends State<RoomScreen> {
         Text(_statusDetail(s, status), style: const TextStyle(fontSize: 14, color: JdColors.subtle)),
         const SizedBox(height: 18),
         if (status == RoomStatus.recruiting) _InviteCard(code: s.inviteCode, link: inviteLink(Uri.base, s.inviteCode)),
-        if (status == RoomStatus.active || status == RoomStatus.finished) _ProgressCard(summary: s),
+        if (status == RoomStatus.active || status == RoomStatus.finished) _ProgressCard(summary: s, feed: _feed, now: now),
         if (showChecks) ...[
           const SizedBox(height: 24),
           Row(
@@ -339,7 +337,7 @@ class _RoomScreenState extends State<RoomScreen> {
                         Text('${c.date.month}/${c.date.day} ${c.valid ? '인증 완료' : '인증 취소됨'}',
                             style: TextStyle(fontSize: 15, color: c.valid ? JdColors.ink : JdColors.faint)),
                         Text(
-                          c.valid ? (c.hasPhoto ? '사진 있음' : '사진 삭제됨 · 완료 체크 유지') : '정리된 요소는 남아 있어요',
+                          c.valid ? (c.hasPhoto ? '사진 있음' : '사진 삭제됨 · 완료 체크 유지') : '쌓인 진행도는 남아 있어요',
                           style: const TextStyle(fontSize: 12, color: JdColors.faint),
                         ),
                       ],
@@ -420,8 +418,8 @@ class _RoomScreenState extends State<RoomScreen> {
             CheckinMode.light => '한 줄로',
           }} 인증해요. ${formatDateTime(s.endsAt!.toLocal())}에 끝나요.',
         RoomStatus.finished => s.goalReachedAt != null
-            ? '공동 목표를 달성했어요! 마지막 책상과 배지는 그대로 남아요.'
-            : '마지막 책상과 정리한 요소는 그대로 남아요.',
+            ? '공동 목표를 달성했어요! 진행도와 배지는 그대로 남아요.'
+            : '쌓인 진행도와 인증 기록은 그대로 남아요.',
         RoomStatus.cancelled => '새 방을 만들 수 있어요.',
         RoomStatus.expired => '새 방을 만들 수 있어요.',
       };
@@ -470,14 +468,36 @@ class _InviteCard extends StatelessWidget {
   }
 }
 
+/// 함께 진행도: 원형 그래프(쌓인 진행도 H / T)와 일차별로 몇 명이 인증했는지.
 class _ProgressCard extends StatelessWidget {
-  const _ProgressCard({required this.summary});
+  const _ProgressCard({required this.summary, required this.feed, required this.now});
 
   final RoomSummary summary;
+  final List<FeedItem> feed;
+  final DateTime now;
+
+  static DateTime _kstDay(DateTime t) {
+    final k = t.toUtc().add(const Duration(hours: 9));
+    return DateTime.utc(k.year, k.month, k.day);
+  }
 
   @override
   Widget build(BuildContext context) {
     final s = summary;
+    final ratio = s.totalElements == 0 ? 0.0 : (s.earned / s.totalElements).clamp(0.0, 1.0);
+    final members = s.activeCount;
+    // 일차별 인증 인원 (시작일 기준, 한국 날짜)
+    final start = s.startsAt == null ? null : _kstDay(s.startsAt!);
+    final today = _kstDay(now);
+    final perDay = List.filled(3, 0);
+    if (start != null) {
+      for (final f in feed) {
+        final d = DateTime.utc(f.date.year, f.date.month, f.date.day).difference(start).inDays;
+        if (d >= 0 && d < 3) perDay[d]++;
+      }
+    }
+    final todayIndex = start == null ? -1 : today.difference(start).inDays;
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(color: JdColors.togetherTint, borderRadius: BorderRadius.circular(20)),
@@ -486,38 +506,147 @@ class _ProgressCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text('공동 책상 · 정리된 요소',
+              const Text('함께 진행도',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
               const Spacer(),
-              if (s.goal != null) Text('목표 ${s.goal}개', style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+              if (s.goal != null) Text('목표 ${s.goal}회', style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
             ],
           ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: DeskView(total: s.totalElements, tidied: s.earned),
-          ),
           const SizedBox(height: 14),
-          Text('${s.earned} / ${s.totalElements}',
-              key: const Key('progressText'),
-              style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800, height: 1.1)),
-          const SizedBox(height: 12),
-          if (s.totalElements > 0) ElementBar(earned: s.earned, total: s.totalElements, goal: s.goal),
-          const SizedBox(height: 12),
-          Text(
-            s.goalReachedAt != null
-                ? '공동 목표 ${s.goal}회 달성! 배지를 받았어요'
-                : '공동 목표 ${s.goal}회까지 ${(s.goal ?? 0) - s.earned}회 남았어요',
-            style: const TextStyle(fontSize: 14, color: Color(0xFF4A5056)),
+          Row(
+            children: [
+              SizedBox(
+                width: 112,
+                height: 112,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: ratio),
+                      duration: const Duration(milliseconds: 700),
+                      curve: Curves.easeOutCubic,
+                      builder: (_, v, __) => CircularProgressIndicator(
+                        value: v,
+                        strokeWidth: 12,
+                        strokeCap: StrokeCap.round,
+                        backgroundColor: JdColors.togetherEmpty,
+                        color: JdColors.together,
+                      ),
+                    ),
+                    Center(
+                      child: Text('${(ratio * 100).round()}%',
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${s.earned} / ${s.totalElements}',
+                        key: const Key('progressText'),
+                        style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, height: 1.1)),
+                    const SizedBox(height: 6),
+                    Text(
+                      s.goalReachedAt != null
+                          ? '공동 목표 ${s.goal}회 달성! 배지를 받았어요'
+                          : '공동 목표 ${s.goal}회까지 ${((s.goal ?? 0) - s.earned).clamp(0, 99)}회 남았어요',
+                      style: const TextStyle(fontSize: 14, color: Color(0xFF4A5056)),
+                    ),
+                    const SizedBox(height: 2),
+                    Text('현재 유효 인증 ${s.validCount}회', style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                  ],
+                ),
+              ),
+            ],
           ),
+          if (start != null) ...[
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                for (var d = 0; d < 3; d++) ...[
+                  if (d > 0) const SizedBox(width: 8),
+                  Expanded(
+                    child: _DayCell(
+                      key: Key('day$d'),
+                      label: '${d + 1}일차',
+                      done: perDay[d],
+                      members: members,
+                      today: d == todayIndex,
+                      future: d > todayIndex,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
           if (s.startCount != null && s.activeCount < s.startCount!)
             Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text('참가자가 나가서 목표와 책상 요소를 조정했어요. 이미 정리한 요소는 그대로예요.',
+              padding: const EdgeInsets.only(top: 10),
+              child: Text('참가자가 나가서 목표를 조정했어요. 이미 쌓인 진행도는 그대로예요.',
                   style: Theme.of(context).textTheme.bodySmall),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 일차 칸: "2일차 · 2/3명"과 인원만큼 채운 점
+class _DayCell extends StatelessWidget {
+  const _DayCell({
+    super.key,
+    required this.label,
+    required this.done,
+    required this.members,
+    required this.today,
+    required this.future,
+  });
+
+  final String label;
+  final int done;
+  final int members;
+  final bool today;
+  final bool future;
+
+  @override
+  Widget build(BuildContext context) {
+    final all = members > 0 && done >= members;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: all ? JdColors.together : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: today ? JdColors.together : Colors.transparent, width: 2),
+      ),
+      child: Column(
+        children: [
+          Text(today ? '$label · 오늘' : label,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: all ? Colors.white : (future ? JdColors.faint : JdColors.togetherText))),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 0; i < members; i++)
+                Container(
+                  width: 10,
+                  height: 10,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i < done ? (all ? Colors.white : JdColors.togetherFill) : (all ? Colors.white38 : JdColors.togetherEmpty),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 4),
-          Text('현재 유효 인증 ${s.validCount}회', style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+          Text(future ? '-' : '$done/$members명',
+              style: TextStyle(fontSize: 12, color: all ? Colors.white : JdColors.subtle)),
         ],
       ),
     );
