@@ -27,6 +27,8 @@ String roomErrorMessage(Object error) {
     'bad_media': '이 방에서는 올릴 수 없는 파일이에요.',
     'media_required': '사진이나 동영상을 골라 주세요.',
     'wrong_mode': '이 방의 인증 방식과 맞지 않아요.',
+    'bad_title': '챌린지 이름은 2~20자로 정해 주세요.',
+    'bad_days': '기간은 3일부터 60일까지 정할 수 있어요.',
     'own_checkin': '내 인증에는 응원할 수 없어요.',
     'checkin_not_found': '취소된 인증이에요.',
   };
@@ -42,7 +44,13 @@ abstract class RoomService {
   Future<RoomSummary> summary(String roomId);
   Future<List<RoomMember>> members(String roomId);
   Future<InvitePreview?> preview(String code);
-  Future<String> create(String nickname, {CheckinMode mode = CheckinMode.result});
+  Future<String> create(
+    String nickname, {
+    CheckinMode mode = CheckinMode.result,
+    ChallengeKind kind = ChallengeKind.tidy,
+    String title = '책상 한 구역 정리',
+    int days = 3,
+  });
   Future<String> join(String code, String nickname);
   Future<void> confirmStart(String roomId);
   Future<void> leave(String roomId);
@@ -100,8 +108,20 @@ class SupabaseRoomService implements RoomService {
   }
 
   @override
-  Future<String> create(String nickname, {CheckinMode mode = CheckinMode.result}) async {
-    final row = await _db.rpc('create_room', params: {'nick': nickname, 'mode': mode.serverName});
+  Future<String> create(
+    String nickname, {
+    CheckinMode mode = CheckinMode.result,
+    ChallengeKind kind = ChallengeKind.tidy,
+    String title = '책상 한 구역 정리',
+    int days = 3,
+  }) async {
+    final row = await _db.rpc('create_room', params: {
+      'nick': nickname,
+      'mode': mode.serverName,
+      'category': kind.serverName,
+      'title': title,
+      'days': days,
+    });
     return (row as Map<String, dynamic>)['id'] as String;
   }
 

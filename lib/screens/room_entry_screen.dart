@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/room.dart';
 import '../services/room_service.dart';
+import '../widgets/jd_widgets.dart';
 
 /// 방 만들기 또는 초대 코드로 참가하기. 방 전용 닉네임(2~10자)을 함께 받는다.
 /// 성공하면 방 ID를 반환하며 닫힌다.
@@ -25,6 +26,9 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
   bool _previewMissing = false;
   bool _busy = false;
   CheckinMode _mode = CheckinMode.result;
+  ChallengeKind _kind = ChallengeKind.tidy;
+  final _title = TextEditingController(text: ChallengeKind.tidy.defaultTitle);
+  int _days = 3;
   String? _error;
 
   @override
@@ -40,6 +44,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
   void dispose() {
     _nickname.dispose();
     _code.dispose();
+    _title.dispose();
     super.dispose();
   }
 
@@ -49,10 +54,28 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
     return n.length < 2 || n.length > 10 ? '닉네임은 2~10자로 정해 주세요' : null;
   }
 
+  String? get _titleError {
+    final t = _title.text.trim();
+    if (t.isEmpty) return null;
+    return t.length < 2 || t.length > 20 ? '챌린지 이름은 2~20자로 정해 주세요' : null;
+  }
+
   bool get _canSubmit {
     final n = _nickname.text.trim();
     if (_busy || n.length < 2 || n.length > 10) return false;
-    return !_joining || _code.text.trim().length == 8;
+    if (_joining) return _code.text.trim().length == 8;
+    final t = _title.text.trim();
+    return t.length >= 2 && t.length <= 20;
+  }
+
+  void _setDays(int d) => setState(() => _days = d.clamp(minChallengeDays, maxChallengeDays));
+
+  void _pickKind(ChallengeKind k) {
+    setState(() {
+      _kind = k;
+      _title.text = k.defaultTitle;
+      // 정리 챌린지는 사진 인증이 어울리고, 나머지는 기본값을 그대로 둔다.
+    });
   }
 
   Future<void> _loadPreview() async {
@@ -75,7 +98,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
       final nick = _nickname.text.trim();
       final id = _joining
           ? await widget.rooms.join(_code.text.trim().toUpperCase(), nick)
-          : await widget.rooms.create(nick, mode: _mode);
+          : await widget.rooms.create(nick, mode: _mode, kind: _kind, title: _title.text.trim(), days: _days);
       if (mounted) Navigator.of(context).pop(id);
     } catch (e) {
       if (!mounted) return;
@@ -91,7 +114,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
     final theme = Theme.of(context);
     final preview = _preview;
     return Scaffold(
-      appBar: AppBar(title: Text(_joining ? '초대받은 방 참가' : '3일 정리 챌린지 방 만들기')),
+      appBar: AppBar(title: Text(_joining ? '초대받은 방 참가' : '챌린지 방 만들기')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -107,7 +130,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
           Text(
             _joining
                 ? '친구가 보낸 초대 코드 8자리로 방에 들어가요.'
-                : '2~4명이 3일 동안 각자 같은 구역을 하루 5분씩 정리해요. 방을 만들고 친구를 초대하세요.',
+                : '2~4명이 $_days일 동안 같은 챌린지를 하루 한 번씩 인증해요. 방을 만들고 친구를 초대하세요.',
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 16),
@@ -128,7 +151,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                   preview.openAt(DateTime.now())
-                      ? '모집 중인 방이에요 · 지금 ${preview.memberCount}명'
+                      ? '모집 중인 방이에요 · ${preview.title == null ? '' : '${preview.days}일 ${preview.title} · '}지금 ${preview.memberCount}명'
                       : '모집이 끝난 방이에요. 새 방을 만들어 보세요.',
                   style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.primary),
                 ),
@@ -138,6 +161,81 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
                 padding: EdgeInsets.only(bottom: 12),
                 child: Text('초대 코드를 찾지 못했어요.'),
               ),
+          ],
+          if (!_joining) ...[
+            Text('어떤 챌린지를 할까요?', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final k in ChallengeKind.values)
+                  ChoiceChip(
+                    label: Text(k.label),
+                    avatar: Icon(challengeIcon(k), size: 18),
+                    showCheckmark: false,
+                    selected: k == _kind,
+                    onSelected: _busy ? null : (_) => _pickKind(k),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _title,
+              enabled: !_busy,
+              maxLength: 20,
+              decoration: InputDecoration(
+                labelText: '챌린지 이름',
+                hintText: '예: 물 2L 마시기',
+                helperText: '하루에 한 번 할 일을 적어 주세요',
+                errorText: _titleError,
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 8),
+            Text('기간', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                IconButton.outlined(
+                  tooltip: '하루 줄이기',
+                  onPressed: _busy || _days <= minChallengeDays ? null : () => _setDays(_days - 1),
+                  icon: const Icon(Icons.remove),
+                ),
+                Expanded(
+                  child: Text('$_days일',
+                      key: const Key('daysText'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                ),
+                IconButton.outlined(
+                  tooltip: '하루 늘리기',
+                  onPressed: _busy || _days >= maxChallengeDays ? null : () => _setDays(_days + 1),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (n, label) in challengeDayAdds)
+                  ActionChip(
+                    label: Text(label),
+                    onPressed: _busy || _days >= maxChallengeDays ? null : () => _setDays(_days + n),
+                  ),
+                ActionChip(
+                  label: const Text('3일로'),
+                  onPressed: _busy || _days == minChallengeDays ? null : () => _setDays(minChallengeDays),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text('3일부터 60일까지 정할 수 있어요 · 1인당 목표 ${(_days * 2 / 3).ceil()}회',
+                style: theme.textTheme.bodySmall),
+            const SizedBox(height: 20),
           ],
           TextField(
             controller: _nickname,

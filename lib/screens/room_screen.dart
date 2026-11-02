@@ -25,13 +25,13 @@ String inviteLink(Uri base, String code) => Uri(
 String roomStatusTitle(RoomStatus status) => switch (status) {
       RoomStatus.recruiting => '친구를 기다리고 있어요',
       RoomStatus.scheduled => '시작을 기다리고 있어요',
-      RoomStatus.active => '함께 정리하는 중',
+      RoomStatus.active => '함께 하는 중',
       RoomStatus.finished => '챌린지가 끝났어요',
       RoomStatus.cancelled => '취소된 방이에요',
       RoomStatus.expired => '모집 시간이 끝났어요',
     };
 
-/// 방 화면: 모집(초대 QR) → 예약 → 3일 인증 → 종료 결과.
+/// 방 화면: 모집(초대 QR) → 예약 → 기간(3·5·7일) 동안 인증 → 종료 결과.
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
     super.key,
@@ -168,7 +168,7 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _confirmStart() async {
     final ok = await _ask('시작을 확정할까요?',
-        '지금 참가한 ${_members.length}명으로 내일 00:00에 시작해 3일 동안 진행해요. 확정 후에는 새로 참가할 수 없어요.');
+        '지금 참가한 ${_members.length}명으로 내일 00:00에 시작해 ${_summary?.days ?? 3}일 동안 진행해요. 확정 후에는 새로 참가할 수 없어요.');
     if (ok) await _run(() => widget.rooms.confirmStart(widget.roomId), done: '내일 00:00에 시작해요');
     await _load();
   }
@@ -225,6 +225,8 @@ class _RoomScreenState extends State<RoomScreen> {
           rooms: widget.rooms,
           roomId: widget.roomId,
           mode: _summary?.checkinMode ?? CheckinMode.result,
+          kind: _summary?.kind ?? ChallengeKind.tidy,
+          title: _summary?.title ?? '책상 한 구역 정리',
         ),
       ),
     );
@@ -243,7 +245,7 @@ class _RoomScreenState extends State<RoomScreen> {
     final summary = _summary;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('3일 정리 챌린지'),
+        title: Text(summary == null ? '챌린지' : '${summary.challengeName} 챌린지'),
         actions: [IconButton(tooltip: '새로고침', onPressed: _load, icon: const Icon(Icons.refresh))],
       ),
       body: summary == null
@@ -265,7 +267,7 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                   onPressed: _busy ? null : _openCheckIn,
                   icon: const Icon(Icons.photo_camera_outlined),
-                  label: const Text('오늘 정리 인증하기'),
+                  label: const Text('오늘 인증하기'),
                 ),
               ),
             )
@@ -361,7 +363,7 @@ class _RoomScreenState extends State<RoomScreen> {
           children: [
             Text('참가자 ${_members.length}명', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             const Spacer(),
-            if (showChecks) const Text('3일 인증', style: TextStyle(fontSize: 12, color: JdColors.faint)),
+            if (showChecks) Text('${s.days}일 인증', style: const TextStyle(fontSize: 12, color: JdColors.faint)),
           ],
         ),
         const SizedBox(height: 8),
@@ -384,10 +386,13 @@ class _RoomScreenState extends State<RoomScreen> {
                     ],
                   ),
                 ),
-                if (showChecks)
-                  for (var d = 0; d < 3; d++) ...[
-                    const SizedBox(width: 6),
-                    CheckSquare(checked: d < m.checkins, color: JdColors.togetherFill, size: 30),
+                if (showChecks && s.days > 7)
+                  Text('${m.checkins} / ${s.days}',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: JdColors.togetherText))
+                else if (showChecks)
+                  for (var d = 0; d < s.days; d++) ...[
+                    SizedBox(width: s.days > 3 ? 3 : 6),
+                    CheckSquare(checked: d < m.checkins, color: JdColors.togetherFill, size: s.days > 3 ? 18 : 30),
                   ],
               ],
             ),
@@ -411,8 +416,8 @@ class _RoomScreenState extends State<RoomScreen> {
   String _statusDetail(RoomSummary s, RoomStatus status) => switch (status) {
         RoomStatus.recruiting =>
           '2~4명이 모이면 방장이 시작을 확정해요. ${formatDateTime(s.recruitExpiresAt.toLocal())}까지 모집해요.',
-        RoomStatus.scheduled => '${formatDateTime(s.startsAt!.toLocal())}에 시작해서 3일 동안 진행해요.',
-        RoomStatus.active => '하루 한 번, 내 구역을 5분 정리하고 ${switch (s.checkinMode) {
+        RoomStatus.scheduled => '${formatDateTime(s.startsAt!.toLocal())}에 시작해서 ${s.days}일 동안 진행해요.',
+        RoomStatus.active => '하루 한 번, ${withObject(s.title)} 하고 ${switch (s.checkinMode) {
             CheckinMode.result => '사진이나 짧은 동영상으로',
             CheckinMode.beforeAfter => '전후 사진으로',
             CheckinMode.light => '한 줄로',
@@ -489,11 +494,12 @@ class _ProgressCard extends StatelessWidget {
     // 일차별 인증 인원 (시작일 기준, 한국 날짜)
     final start = s.startsAt == null ? null : _kstDay(s.startsAt!);
     final today = _kstDay(now);
-    final perDay = List.filled(3, 0);
+    final days = s.days;
+    final perDay = List.filled(days, 0);
     if (start != null) {
       for (final f in feed) {
         final d = DateTime.utc(f.date.year, f.date.month, f.date.day).difference(start).inDays;
-        if (d >= 0 && d < 3) perDay[d]++;
+        if (d >= 0 && d < days) perDay[d]++;
       }
     }
     final todayIndex = start == null ? -1 : today.difference(start).inDays;
@@ -562,16 +568,20 @@ class _ProgressCard extends StatelessWidget {
               ),
             ],
           ),
-          if (start != null) ...[
+          if (start != null && days > 7) ...[
+            const SizedBox(height: 18),
+            _DayGrid(perDay: perDay, members: members, todayIndex: todayIndex),
+          ] else if (start != null) ...[
             const SizedBox(height: 18),
             Row(
               children: [
-                for (var d = 0; d < 3; d++) ...[
-                  if (d > 0) const SizedBox(width: 8),
+                for (var d = 0; d < days; d++) ...[
+                  if (d > 0) SizedBox(width: days > 3 ? 4 : 8),
                   Expanded(
                     child: _DayCell(
                       key: Key('day$d'),
-                      label: '${d + 1}일차',
+                      compact: days > 3,
+                      label: days > 3 ? '${d + 1}일' : '${d + 1}일차',
                       done: perDay[d],
                       members: members,
                       today: d == todayIndex,
@@ -594,6 +604,63 @@ class _ProgressCard extends StatelessWidget {
   }
 }
 
+/// 8일 이상 챌린지: 한 줄에 7칸씩 달력처럼. 모두 인증한 날은 진하게, 일부만 한 날은 옅게 칠한다.
+class _DayGrid extends StatelessWidget {
+  const _DayGrid({required this.perDay, required this.members, required this.todayIndex});
+
+  final List<int> perDay;
+  final int members;
+  final int todayIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final allDays = perDay.where((n) => members > 0 && n >= members).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('모두 인증한 날 $allDays일 · ${(todayIndex + 1).clamp(0, perDay.length)}일째 진행 중',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
+        const SizedBox(height: 8),
+        GridView.count(
+          key: const Key('dayGrid'),
+          crossAxisCount: 7,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 4,
+          crossAxisSpacing: 4,
+          children: [
+            for (var d = 0; d < perDay.length; d++)
+              Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: d > todayIndex
+                      ? Colors.white
+                      : members > 0 && perDay[d] >= members
+                          ? JdColors.together
+                          : perDay[d] > 0
+                              ? JdColors.togetherChip
+                              : Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: d == todayIndex ? JdColors.together : Colors.transparent, width: 2),
+                ),
+                child: Text('${d + 1}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: members > 0 && perDay[d] >= members && d <= todayIndex
+                          ? Colors.white
+                          : d > todayIndex
+                              ? JdColors.faint
+                              : JdColors.ink,
+                    )),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 /// 일차 칸: "2일차 · 2/3명"과 인원만큼 채운 점
 class _DayCell extends StatelessWidget {
   const _DayCell({
@@ -603,8 +670,11 @@ class _DayCell extends StatelessWidget {
     required this.members,
     required this.today,
     required this.future,
+    this.compact = false,
   });
 
+  /// 5·7일 챌린지는 칸이 좁아서 점 대신 숫자만 보여 준다.
+  final bool compact;
   final String label;
   final int done;
   final int members;
@@ -614,6 +684,28 @@ class _DayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final all = members > 0 && done >= members;
+    if (compact) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: all ? JdColors.together : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: today ? JdColors.together : Colors.transparent, width: 2),
+        ),
+        child: Column(
+          children: [
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: all ? Colors.white : (future ? JdColors.faint : JdColors.togetherText))),
+            const SizedBox(height: 4),
+            Text(future ? '-' : '$done/$members',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: all ? Colors.white : JdColors.ink)),
+          ],
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       decoration: BoxDecoration(

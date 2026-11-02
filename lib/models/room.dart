@@ -21,6 +21,36 @@ enum CheckinMode {
       values.firstWhere((m) => m.serverName == value, orElse: () => result);
 }
 
+/// 챌린지 종류. 방장이 고르고, 이름은 바꿀 수 있다.
+enum ChallengeKind {
+  tidy('tidy', '정리', '책상 한 구역 정리'),
+  reading('reading', '책 읽기', '책 10쪽 읽기'),
+  study('study', '공부', '30분 공부하기'),
+  exercise('exercise', '운동', '20분 운동하기'),
+  custom('custom', '직접 만들기', '');
+
+  const ChallengeKind(this.serverName, this.label, this.defaultTitle);
+  final String serverName;
+  final String label;
+  final String defaultTitle;
+
+  static ChallengeKind fromServer(String? value) =>
+      values.firstWhere((k) => k.serverName == value, orElse: () => tidy);
+}
+
+/// 챌린지 기간 범위와 빠르게 더하는 버튼
+const minChallengeDays = 3;
+const maxChallengeDays = 60;
+const challengeDayAdds = [(3, '+3일'), (5, '+5일'), (7, '+7일'), (30, '+한 달')];
+
+/// 받침에 맞는 목적격 조사: '독서' → '독서를', '책 10쪽 읽기' → '책 10쪽 읽기를'
+String withObject(String word) {
+  if (word.isEmpty) return word;
+  final c = word.runes.last;
+  if (c < 0xAC00 || c > 0xD7A3) return '$word를';
+  return (c - 0xAC00) % 28 == 0 ? '$word를' : '$word을';
+}
+
 RoomStatus _status(String value) =>
     RoomStatus.values.firstWhere((s) => s.name == value, orElse: () => RoomStatus.expired);
 
@@ -42,6 +72,9 @@ class RoomSummary {
     required this.validCount,
     this.goalReachedAt,
     this.checkinMode = CheckinMode.result,
+    this.kind = ChallengeKind.tidy,
+    this.title = '책상 한 구역 정리',
+    this.days = 3,
   });
 
   final String id;
@@ -58,19 +91,27 @@ class RoomSummary {
   /// 현재 참가 인원 A
   final int activeCount;
 
-  /// 현재 책상 요소 수 T = 3×A + L
+  /// 현재 진행도 칸 수 T = 기간×A + L
   final int totalElements;
 
   /// 공동 목표 G
   final int? goal;
 
-  /// 정리된 요소(누적 획득 보상) H
+  /// 쌓인 진행도(누적 획득 보상) H
   final int earned;
 
   /// 현재 유효 인증 수 C
   final int validCount;
   final DateTime? goalReachedAt;
   final CheckinMode checkinMode;
+
+  /// 챌린지 종류·이름·기간
+  final ChallengeKind kind;
+  final String title;
+  final int days;
+
+  /// '5일 책 10쪽 읽기' 같은 짧은 이름
+  String get challengeName => '$days일 $title';
 
   /// 예약된 방은 시작 시각이 지나면 진행 중으로 본다(서버는 첫 인증 때 바꾼다).
   RoomStatus statusAt(DateTime now) {
@@ -104,6 +145,9 @@ class RoomSummary {
       validCount: j['valid_count'] as int,
       goalReachedAt: t('goal_reached_at'),
       checkinMode: CheckinMode.fromServer(j['checkin_mode'] as String?),
+      kind: ChallengeKind.fromServer(j['category'] as String?),
+      title: (j['title'] as String?) ?? '책상 한 구역 정리',
+      days: (j['days'] as int?) ?? 3,
     );
   }
 }
@@ -136,11 +180,19 @@ class RoomMember {
 }
 
 class InvitePreview {
-  const InvitePreview({required this.status, required this.memberCount, required this.recruitExpiresAt});
+  const InvitePreview({
+    required this.status,
+    required this.memberCount,
+    required this.recruitExpiresAt,
+    this.title,
+    this.days = 3,
+  });
 
   final RoomStatus status;
   final int memberCount;
   final DateTime recruitExpiresAt;
+  final String? title;
+  final int days;
 
   bool openAt(DateTime now) =>
       status == RoomStatus.recruiting && now.isBefore(recruitExpiresAt) && memberCount < 4;
@@ -149,6 +201,8 @@ class InvitePreview {
         status: _status(j['status'] as String),
         memberCount: j['member_count'] as int,
         recruitExpiresAt: DateTime.parse(j['recruit_expires_at'] as String),
+        title: j['title'] as String?,
+        days: (j['days'] as int?) ?? 3,
       );
 }
 

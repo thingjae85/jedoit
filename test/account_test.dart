@@ -204,7 +204,7 @@ void main() {
     await tester.pumpWidget(JeoduitApp(account: account, rooms: _NoRooms(), drafts: drafts));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('친구와 3일 정리 챌린지'));
+    await tester.tap(find.text('친구와 함께 챌린지'));
     await tester.pumpAndSettle();
     expect(find.text('어떻게 참여할까요?'), findsOneWidget);
     await tester.tap(find.text('로그인 없이 참여'));
@@ -223,7 +223,7 @@ void main() {
     await tester.pumpWidget(JeoduitApp(account: account, rooms: _NoRooms(), drafts: drafts));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('친구와 3일 정리 챌린지'));
+    await tester.tap(find.text('친구와 함께 챌린지'));
     await tester.pumpAndSettle();
     await tester.tapAt(const Offset(5, 5)); // 바깥을 눌러 닫기
     await tester.pumpAndSettle();

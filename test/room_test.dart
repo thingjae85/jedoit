@@ -60,8 +60,16 @@ class _FakeRooms implements RoomService {
       ? InvitePreview(status: RoomStatus.recruiting, memberCount: 2, recruitExpiresAt: DateTime.now().add(const Duration(hours: 3)))
       : null;
   @override
-  Future<String> create(String nickname, {CheckinMode mode = CheckinMode.result}) async {
-    created.add('$nickname:${mode.serverName}');
+  Future<String> create(
+    String nickname, {
+    CheckinMode mode = CheckinMode.result,
+    ChallengeKind kind = ChallengeKind.tidy,
+    String title = '책상 한 구역 정리',
+    int days = 3,
+  }) async {
+    created.add(kind == ChallengeKind.tidy && days == 3
+        ? '$nickname:${mode.serverName}'
+        : '$nickname:${mode.serverName}:${kind.serverName}:$title:$days');
     return 'room-1';
   }
 
@@ -219,6 +227,7 @@ void main() {
   });
 
   testWidgets('방 만들기: 닉네임 2~10자를 확인한 뒤 만든다', (tester) async {
+    _tall(tester);
     final rooms = _FakeRooms();
     String? result;
     await tester.pumpWidget(_wrap(Builder(
@@ -231,12 +240,12 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), '명');
+    await tester.enterText(find.widgetWithText(TextField, '이 방에서 쓸 닉네임'), '명');
     await tester.pump();
     expect(find.text('닉네임은 2~10자로 정해 주세요'), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull);
 
-    await tester.enterText(find.byType(TextField), '명재');
+    await tester.enterText(find.widgetWithText(TextField, '이 방에서 쓸 닉네임'), '명재');
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '방 만들기'));
     await tester.pumpAndSettle();
@@ -294,7 +303,7 @@ void main() {
     expect(find.textContaining('공동 목표 7회까지 6회'), findsOneWidget);
     expect(find.textContaining('참가자가 나가서'), findsOneWidget);
 
-    expect(find.text('오늘 정리 인증하기'), findsOneWidget);
+    expect(find.text('오늘 인증하기'), findsOneWidget);
   });
 
   testWidgets('인증 화면: 사진·완료 체크가 있어야 저장되고 압축한 JPEG을 올린다', (tester) async {
@@ -542,7 +551,7 @@ void main() {
       ..feedItems = [_feedItem(nick: '영희', media: FeedMedia.none, note: '서랍 정리 끝')];
     await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now, autoRefresh: null)));
     await tester.pumpAndSettle();
-    expect(find.text('오늘 2명 중 1명이 정리했어요'), findsOneWidget);
+    expect(find.text('오늘 2명 중 1명이 인증했어요'), findsOneWidget);
     expect(find.descendant(of: find.byKey(const Key('day0')), matching: find.text('1/2명')), findsOneWidget);
     expect(find.text('1일차 · 오늘'), findsOneWidget);
 
@@ -552,7 +561,7 @@ void main() {
     ];
     await tester.tap(find.byIcon(Icons.refresh));
     await tester.pumpAndSettle();
-    expect(find.text('🎉 오늘 모두 정리 완료!'), findsOneWidget);
+    expect(find.text('🎉 오늘 모두 인증 완료!'), findsOneWidget);
   });
 
   testWidgets('자동 새로고침: 친구가 인증하면 피드에 나타나고 알림이 뜬다', (tester) async {
@@ -571,5 +580,127 @@ void main() {
     expect(find.byType(FeedCard), findsOneWidget);
     expect(find.text('영희님이 방금 인증했어요! 응원해 주세요 👏'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  test('받침에 맞게 을/를을 붙인다', () {
+    expect(withObject('책 10쪽 읽기'), '책 10쪽 읽기를');
+    expect(withObject('30분 공부'), '30분 공부를');
+    expect(withObject('스트레칭'), '스트레칭을');
+    expect(withObject('Run'), 'Run를');
+  });
+
+  testWidgets('챌린지 커스텀: 종류를 고르면 이름이 채워지고, 직접 만들기는 이름을 적어야 한다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms();
+    await tester.pumpWidget(_wrap(RoomEntryScreen(rooms: rooms)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '이 방에서 쓸 닉네임'), '명재');
+
+    await tester.tap(find.text('책 읽기'));
+    await tester.pump();
+    expect(find.widgetWithText(TextField, '책 10쪽 읽기'), findsOneWidget);
+    await tester.tap(find.text('+3일'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.pump();
+    expect(find.textContaining('5일 동안'), findsOneWidget);
+    expect(find.textContaining('1인당 목표 4회'), findsOneWidget);
+    await tester.tap(find.text('+한 달'));
+    await tester.pump();
+    await tester.tap(find.text('+한 달'));
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '60일');
+    await tester.tap(find.text('3일로'));
+    await tester.pump();
+    await tester.tap(find.text('+5일'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '5일');
+
+    await tester.tap(find.text('직접 만들기'));
+    await tester.pump();
+    final create = find.widgetWithText(FilledButton, '방 만들기');
+    expect(tester.widget<FilledButton>(create).onPressed, isNull);
+    await tester.enterText(find.widgetWithText(TextField, '챌린지 이름'), '물 2L 마시기');
+    await tester.pump();
+    await tester.tap(find.text('가벼운 인증'));
+    await tester.pump();
+    await tester.tap(create);
+    await tester.pumpAndSettle();
+    expect(rooms.created, ['명재:light:custom:물 2L 마시기:5']);
+  });
+
+  testWidgets('5일 챌린지 방은 이름과 5일 칸을 보여 주고, 인증 화면도 챌린지 이름을 쓴다', (tester) async {
+    _tall(tester);
+    final base = _summary(status: RoomStatus.active, earned: 1, active: 2, n0: 2, goal: 8, total: 10);
+    final rooms = _FakeRooms()
+      ..current = RoomSummary(
+        id: base.id,
+        status: base.status,
+        inviteCode: base.inviteCode,
+        isHost: true,
+        recruitExpiresAt: base.recruitExpiresAt,
+        startsAt: base.startsAt,
+        endsAt: base.startsAt!.add(const Duration(days: 5)),
+        startCount: 2,
+        activeCount: 2,
+        totalElements: 10,
+        goal: 8,
+        earned: 1,
+        validCount: 1,
+        kind: ChallengeKind.reading,
+        title: '책 10쪽 읽기',
+        days: 5,
+      );
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now, autoRefresh: null)));
+    await tester.pumpAndSettle();
+    expect(find.text('5일 책 10쪽 읽기 챌린지'), findsOneWidget);
+    expect(find.text('5일 인증'), findsOneWidget);
+    expect(find.byKey(const Key('day4')), findsOneWidget);
+    expect(find.textContaining('책 10쪽 읽기를 하고'), findsOneWidget);
+
+    await tester.tap(find.text('오늘 인증하기'));
+    await tester.pumpAndSettle();
+    expect(find.text('오늘 인증'), findsOneWidget);
+    expect(find.text('오늘 책 10쪽 읽기를 실제로 했어요'), findsOneWidget);
+  });
+
+  testWidgets('한 달 챌린지 방은 날짜를 달력처럼 보여 주고, 참가자 인증은 숫자로 보여 준다', (tester) async {
+    _tall(tester);
+    final base = _summary(status: RoomStatus.active, earned: 1, active: 2, n0: 2, goal: 40, total: 60);
+    final rooms = _FakeRooms()
+      ..people = [
+        const RoomMember(nickname: '명재', nicknameNo: 1, isMe: true, isHost: true, checkins: 1),
+        const RoomMember(nickname: '영희', nicknameNo: 1, isMe: false, isHost: false, checkins: 0),
+      ]
+      ..current = RoomSummary(
+        id: base.id,
+        status: base.status,
+        inviteCode: base.inviteCode,
+        isHost: true,
+        recruitExpiresAt: base.recruitExpiresAt,
+        startsAt: base.startsAt,
+        endsAt: base.startsAt!.add(const Duration(days: 30)),
+        startCount: 2,
+        activeCount: 2,
+        totalElements: 60,
+        goal: 40,
+        earned: 1,
+        validCount: 1,
+        kind: ChallengeKind.exercise,
+        title: '20분 운동하기',
+        days: 30,
+      );
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now, autoRefresh: null)));
+    await tester.pumpAndSettle();
+    expect(find.text('30일 20분 운동하기 챌린지'), findsOneWidget);
+    expect(find.byKey(const Key('dayGrid')), findsOneWidget);
+    expect(find.text('1 / 30'), findsOneWidget);
+    expect(find.text('0 / 30'), findsOneWidget);
   });
 }

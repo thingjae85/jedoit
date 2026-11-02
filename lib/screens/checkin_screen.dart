@@ -39,6 +39,8 @@ class CheckInScreen extends StatefulWidget {
     required this.rooms,
     required this.roomId,
     this.mode = CheckinMode.result,
+    this.kind = ChallengeKind.tidy,
+    this.title = '책상 한 구역 정리',
     this.picker,
     this.videoPicker,
   });
@@ -46,6 +48,10 @@ class CheckInScreen extends StatefulWidget {
   final RoomService rooms;
   final String roomId;
   final CheckinMode mode;
+
+  /// 챌린지 종류·이름. 정리 챌린지가 아니면 문구를 이름에 맞춘다.
+  final ChallengeKind kind;
+  final String title;
 
   /// 테스트에서 사진·동영상 고르기를 바꿔 끼운다.
   final FilePicker? picker;
@@ -68,6 +74,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   String? _error;
 
   CheckinMode get _mode => widget.mode;
+  bool get _tidy => widget.kind == ChallengeKind.tidy;
 
   /// 전후 인증에서 아직 '전' 사진을 올리지 않았으면 '전' 단계
   bool get _beforeStep => _mode == CheckinMode.beforeAfter && _savedBefore == null;
@@ -160,7 +167,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
           _beforePhoto = null;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('전 사진을 올렸어요. 정리를 마치면 후 사진을 올려 주세요')),
+          SnackBar(content: Text(_tidy ? '전 사진을 올렸어요. 정리를 마치면 후 사진을 올려 주세요' : '전 사진을 올렸어요. 다 하고 나면 후 사진을 올려 주세요')),
         );
       });
 
@@ -185,8 +192,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
   Widget build(BuildContext context) {
     final title = switch (_mode) {
       CheckinMode.light => '오늘 했어요',
-      CheckinMode.result => '오늘 정리 인증',
-      CheckinMode.beforeAfter => _beforeStep ? '정리 전 사진' : '정리 후 사진',
+      CheckinMode.result => _tidy ? '오늘 정리 인증' : '오늘 인증',
+      CheckinMode.beforeAfter => _tidy
+          ? (_beforeStep ? '정리 전 사진' : '정리 후 사진')
+          : (_beforeStep ? '시작 전 사진' : '다 한 뒤 사진'),
     };
     return Scaffold(
       appBar: AppBar(title: Text(title)),
@@ -221,7 +230,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   Widget _doneCheck() => CheckboxListTile(
         value: _checked,
         onChanged: _busy ? null : (v) => setState(() => _checked = v ?? false),
-        title: const Text('오늘 5분 정리를 실제로 했어요'),
+        title: Text(_tidy ? '오늘 5분 정리를 실제로 했어요' : '오늘 ${withObject(widget.title)} 실제로 했어요'),
         controlAffinity: ListTileControlAffinity.leading,
         contentPadding: EdgeInsets.zero,
       );
@@ -262,7 +271,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         const Text('사진 없이 오늘 한 일을 한 줄로 남겨요. 방 친구들 피드에 바로 보여요.',
             style: TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 16),
-        _noteField(_note, '오늘의 한 줄', hint: '예: 책상 왼쪽 서랍 정리 끝!'),
+        _noteField(_note, '오늘의 한 줄', hint: _tidy ? '예: 책상 왼쪽 서랍 정리 끝!' : '예: 오늘은 조금 더 했어요!'),
         const SizedBox(height: 8),
         _submitButton('했어요'),
       ];
@@ -315,7 +324,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       ];
 
   List<Widget> _before() => [
-        const Text('정리를 시작하기 전에 지금 모습을 찍어 두세요. 끝나면 후 사진을 올려 나란히 보여 줘요.',
+        Text(_tidy ? '정리를 시작하기 전에 지금 모습을 찍어 두세요. 끝나면 후 사진을 올려 나란히 보여 줘요.' : '시작하기 전에 한 장 찍어 두세요. 다 하면 후 사진을 올려 나란히 보여 줘요.',
             style: TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 12),
         if (_beforePhoto != null) _photoPreview(_beforePhoto!, label: '전'),
@@ -338,7 +347,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   List<Widget> _after() {
     final before = _savedBefore!;
     return [
-      const Text('정리를 마쳤으면 같은 자리를 다시 찍어 주세요.', style: TextStyle(fontSize: 15, color: JdColors.subtle)),
+      Text(_tidy ? '정리를 마쳤으면 같은 자리를 다시 찍어 주세요.' : '다 했으면 한 장 더 찍어 주세요.', style: TextStyle(fontSize: 15, color: JdColors.subtle)),
       const SizedBox(height: 12),
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,

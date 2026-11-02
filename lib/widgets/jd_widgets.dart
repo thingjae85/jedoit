@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/mission_record.dart';
+import '../models/room.dart';
 import '../theme.dart';
 
 /// 기기 시간 기준 날짜(시각 제거).
@@ -194,3 +195,12 @@ class ElementBar extends StatelessWidget {
     );
   }
 }
+
+/// 챌린지 종류 아이콘
+IconData challengeIcon(ChallengeKind kind) => switch (kind) {
+      ChallengeKind.tidy => Icons.cleaning_services_outlined,
+      ChallengeKind.reading => Icons.menu_book_outlined,
+      ChallengeKind.study => Icons.edit_note,
+      ChallengeKind.exercise => Icons.directions_run,
+      ChallengeKind.custom => Icons.add_circle_outline,
+    };
