@@ -28,7 +28,7 @@ String roomErrorMessage(Object error) {
     'media_required': '사진이나 동영상을 골라 주세요.',
     'wrong_mode': '이 방의 인증 방식과 맞지 않아요.',
     'bad_title': '챌린지 이름은 2~20자로 정해 주세요.',
-    'bad_days': '기간은 3일, 5일, 7일 중에서 골라 주세요.',
+    'bad_days': '기간은 3일부터 60일까지 정할 수 있어요.',
     'own_checkin': '내 인증에는 응원할 수 없어요.',
     'checkin_not_found': '취소된 인증이에요.',
   };

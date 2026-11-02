@@ -68,6 +68,8 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
     return t.length >= 2 && t.length <= 20;
   }
 
+  void _setDays(int d) => setState(() => _days = d.clamp(minChallengeDays, maxChallengeDays));
+
   void _pickKind(ChallengeKind k) {
     setState(() {
       _kind = k;
@@ -194,11 +196,45 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
             const SizedBox(height: 8),
             Text('기간', style: theme.textTheme.titleSmall),
             const SizedBox(height: 8),
-            SegmentedButton<int>(
-              segments: [for (final d in challengeDays) ButtonSegment(value: d, label: Text('$d일'))],
-              selected: {_days},
-              onSelectionChanged: _busy ? null : (s) => setState(() => _days = s.first),
+            Row(
+              children: [
+                IconButton.outlined(
+                  tooltip: '하루 줄이기',
+                  onPressed: _busy || _days <= minChallengeDays ? null : () => _setDays(_days - 1),
+                  icon: const Icon(Icons.remove),
+                ),
+                Expanded(
+                  child: Text('$_days일',
+                      key: const Key('daysText'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                ),
+                IconButton.outlined(
+                  tooltip: '하루 늘리기',
+                  onPressed: _busy || _days >= maxChallengeDays ? null : () => _setDays(_days + 1),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
             ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (n, label) in challengeDayAdds)
+                  ActionChip(
+                    label: Text(label),
+                    onPressed: _busy || _days >= maxChallengeDays ? null : () => _setDays(_days + n),
+                  ),
+                ActionChip(
+                  label: const Text('3일로'),
+                  onPressed: _busy || _days == minChallengeDays ? null : () => _setDays(minChallengeDays),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text('3일부터 60일까지 정할 수 있어요 · 1인당 목표 ${(_days * 2 / 3).ceil()}회',
+                style: theme.textTheme.bodySmall),
             const SizedBox(height: 20),
           ],
           TextField(

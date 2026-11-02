@@ -386,7 +386,10 @@ class _RoomScreenState extends State<RoomScreen> {
                     ],
                   ),
                 ),
-                if (showChecks)
+                if (showChecks && s.days > 7)
+                  Text('${m.checkins} / ${s.days}',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: JdColors.togetherText))
+                else if (showChecks)
                   for (var d = 0; d < s.days; d++) ...[
                     SizedBox(width: s.days > 3 ? 3 : 6),
                     CheckSquare(checked: d < m.checkins, color: JdColors.togetherFill, size: s.days > 3 ? 18 : 30),
@@ -565,7 +568,10 @@ class _ProgressCard extends StatelessWidget {
               ),
             ],
           ),
-          if (start != null) ...[
+          if (start != null && days > 7) ...[
+            const SizedBox(height: 18),
+            _DayGrid(perDay: perDay, members: members, todayIndex: todayIndex),
+          ] else if (start != null) ...[
             const SizedBox(height: 18),
             Row(
               children: [
@@ -594,6 +600,63 @@ class _ProgressCard extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// 8일 이상 챌린지: 한 줄에 7칸씩 달력처럼. 모두 인증한 날은 진하게, 일부만 한 날은 옅게 칠한다.
+class _DayGrid extends StatelessWidget {
+  const _DayGrid({required this.perDay, required this.members, required this.todayIndex});
+
+  final List<int> perDay;
+  final int members;
+  final int todayIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    final allDays = perDay.where((n) => members > 0 && n >= members).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('모두 인증한 날 $allDays일 · ${(todayIndex + 1).clamp(0, perDay.length)}일째 진행 중',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
+        const SizedBox(height: 8),
+        GridView.count(
+          key: const Key('dayGrid'),
+          crossAxisCount: 7,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 4,
+          crossAxisSpacing: 4,
+          children: [
+            for (var d = 0; d < perDay.length; d++)
+              Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: d > todayIndex
+                      ? Colors.white
+                      : members > 0 && perDay[d] >= members
+                          ? JdColors.together
+                          : perDay[d] > 0
+                              ? JdColors.togetherChip
+                              : Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: d == todayIndex ? JdColors.together : Colors.transparent, width: 2),
+                ),
+                child: Text('${d + 1}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: members > 0 && perDay[d] >= members && d <= todayIndex
+                          ? Colors.white
+                          : d > todayIndex
+                              ? JdColors.faint
+                              : JdColors.ink,
+                    )),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

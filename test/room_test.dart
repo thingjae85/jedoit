@@ -599,9 +599,28 @@ void main() {
     await tester.tap(find.text('책 읽기'));
     await tester.pump();
     expect(find.widgetWithText(TextField, '책 10쪽 읽기'), findsOneWidget);
-    await tester.tap(find.text('5일'));
+    await tester.tap(find.text('+3일'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
     await tester.pump();
     expect(find.textContaining('5일 동안'), findsOneWidget);
+    expect(find.textContaining('1인당 목표 4회'), findsOneWidget);
+    await tester.tap(find.text('+한 달'));
+    await tester.pump();
+    await tester.tap(find.text('+한 달'));
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '60일');
+    await tester.tap(find.text('3일로'));
+    await tester.pump();
+    await tester.tap(find.text('+5일'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '5일');
 
     await tester.tap(find.text('직접 만들기'));
     await tester.pump();
@@ -649,5 +668,39 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('오늘 인증'), findsOneWidget);
     expect(find.text('오늘 책 10쪽 읽기를 실제로 했어요'), findsOneWidget);
+  });
+
+  testWidgets('한 달 챌린지 방은 날짜를 달력처럼 보여 주고, 참가자 인증은 숫자로 보여 준다', (tester) async {
+    _tall(tester);
+    final base = _summary(status: RoomStatus.active, earned: 1, active: 2, n0: 2, goal: 40, total: 60);
+    final rooms = _FakeRooms()
+      ..people = [
+        const RoomMember(nickname: '명재', nicknameNo: 1, isMe: true, isHost: true, checkins: 1),
+        const RoomMember(nickname: '영희', nicknameNo: 1, isMe: false, isHost: false, checkins: 0),
+      ]
+      ..current = RoomSummary(
+        id: base.id,
+        status: base.status,
+        inviteCode: base.inviteCode,
+        isHost: true,
+        recruitExpiresAt: base.recruitExpiresAt,
+        startsAt: base.startsAt,
+        endsAt: base.startsAt!.add(const Duration(days: 30)),
+        startCount: 2,
+        activeCount: 2,
+        totalElements: 60,
+        goal: 40,
+        earned: 1,
+        validCount: 1,
+        kind: ChallengeKind.exercise,
+        title: '20분 운동하기',
+        days: 30,
+      );
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now, autoRefresh: null)));
+    await tester.pumpAndSettle();
+    expect(find.text('30일 20분 운동하기 챌린지'), findsOneWidget);
+    expect(find.byKey(const Key('dayGrid')), findsOneWidget);
+    expect(find.text('1 / 30'), findsOneWidget);
+    expect(find.text('0 / 30'), findsOneWidget);
   });
 }

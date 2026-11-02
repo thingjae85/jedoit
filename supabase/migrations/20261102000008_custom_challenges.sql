@@ -1,4 +1,4 @@
--- 8단계: 챌린지 커스텀 — 방마다 할 일(종류·이름)과 기간(3·5·7일)을 정한다.
+-- 8단계: 챌린지 커스텀 — 방마다 할 일(종류·이름)과 기간(3~60일)을 정한다.
 -- 기존 방은 '책상 한 구역 정리' 3일 챌린지로 그대로 동작한다.
 
 alter table public.rooms
@@ -7,9 +7,9 @@ alter table public.rooms
   add column if not exists title text not null default '책상 한 구역 정리'
     check (char_length(title) between 2 and 20),
   add column if not exists days int not null default 3
-    check (days in (3, 5, 7));
+    check (days between 3 and 60);
 
--- 1인당 목표: 기간의 2/3 (3일 → 2회, 5일 → 4회, 7일 → 5회)
+-- 1인당 목표: 기간의 2/3 올림 (3일 → 2회, 7일 → 5회, 30일 → 20회)
 create or replace function public._goal_per_person(d int)
 returns int language sql immutable as $$
   select ceil(d * 2 / 3.0)::int
@@ -76,6 +76,7 @@ end $$;
 
 -- 방 만들기: 인증 방식 + 챌린지 종류·이름·기간
 drop function if exists public.create_room(text, text);
+drop function if exists public.create_room(text, text, text, text, int);
 create function public.create_room(
   nick text, mode text default 'result',
   category text default 'tidy', title text default '책상 한 구역 정리', days int default 3)
@@ -89,7 +90,7 @@ begin
   if mode not in ('result', 'before_after', 'light') then raise exception 'bad_mode'; end if;
   if category not in ('tidy', 'reading', 'study', 'exercise', 'custom') then raise exception 'bad_category'; end if;
   if t is null or char_length(t) not between 2 and 20 then raise exception 'bad_title'; end if;
-  if days not in (3, 5, 7) then raise exception 'bad_days'; end if;
+  if days is null or days not between 3 and 60 then raise exception 'bad_days'; end if;
   if _has_open_room(u) then raise exception 'already_in_room'; end if;
   insert into rooms (host_id, checkin_mode, category, title, days)
   values (u, mode, category, t, days) returning * into new_room;

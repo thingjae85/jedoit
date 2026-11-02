@@ -38,8 +38,10 @@ enum ChallengeKind {
       values.firstWhere((k) => k.serverName == value, orElse: () => tidy);
 }
 
-/// 챌린지 기간으로 고를 수 있는 날 수
-const challengeDays = [3, 5, 7];
+/// 챌린지 기간 범위와 빠르게 더하는 버튼
+const minChallengeDays = 3;
+const maxChallengeDays = 60;
+const challengeDayAdds = [(3, '+3일'), (5, '+5일'), (7, '+7일'), (30, '+한 달')];
 
 /// 받침에 맞는 목적격 조사: '독서' → '독서를', '책 10쪽 읽기' → '책 10쪽 읽기를'
 String withObject(String word) {
