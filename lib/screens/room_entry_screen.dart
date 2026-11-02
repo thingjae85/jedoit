@@ -24,6 +24,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
   InvitePreview? _preview;
   bool _previewMissing = false;
   bool _busy = false;
+  CheckinMode _mode = CheckinMode.result;
   String? _error;
 
   @override
@@ -74,7 +75,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
       final nick = _nickname.text.trim();
       final id = _joining
           ? await widget.rooms.join(_code.text.trim().toUpperCase(), nick)
-          : await widget.rooms.create(nick);
+          : await widget.rooms.create(nick, mode: _mode);
       if (mounted) Navigator.of(context).pop(id);
     } catch (e) {
       if (!mounted) return;
@@ -150,6 +151,28 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
             ),
             onChanged: (_) => setState(() {}),
           ),
+          if (!_joining) ...[
+            const SizedBox(height: 8),
+            Text('인증 방식', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            RadioGroup<CheckinMode>(
+              groupValue: _mode,
+              onChanged: (v) {
+                if (!_busy && v != null) setState(() => _mode = v);
+              },
+              child: Column(
+                children: [
+                  for (final m in CheckinMode.values)
+                    RadioListTile<CheckinMode>(
+                      value: m,
+                      title: Text(m.label),
+                      subtitle: Text(m.description),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                ],
+              ),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(_error!, style: TextStyle(color: theme.colorScheme.error)),

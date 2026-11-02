@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:jeoduit/models/room.dart';
+import 'package:jeoduit/screens/checkin_screen.dart';
 import 'package:jeoduit/screens/room_entry_screen.dart';
 import 'package:jeoduit/screens/room_screen.dart';
 import 'package:jeoduit/services/room_service.dart';
 import 'package:jeoduit/utils/photo.dart';
+import 'package:jeoduit/utils/video.dart';
+import 'package:jeoduit/widgets/room_feed.dart';
 import 'package:jeoduit/widgets/desk_view.dart';
 
 final _now = DateTime.utc(2026, 11, 11, 3); // 11/11 12:00 KST
@@ -57,8 +60,8 @@ class _FakeRooms implements RoomService {
       ? InvitePreview(status: RoomStatus.recruiting, memberCount: 2, recruitExpiresAt: DateTime.now().add(const Duration(hours: 3)))
       : null;
   @override
-  Future<String> create(String nickname) async {
-    created.add(nickname);
+  Future<String> create(String nickname, {CheckinMode mode = CheckinMode.result}) async {
+    created.add('$nickname:${mode.serverName}');
     return 'room-1';
   }
 
@@ -74,7 +77,29 @@ class _FakeRooms implements RoomService {
   @override
   Future<void> leave(String roomId) async {}
   @override
-  Future<void> checkIn(String roomId, Uint8List jpeg, String memo) async => uploaded = jpeg;
+  Future<void> checkIn(String roomId, {Uint8List? photo, CheckinVideo? video, required String note}) async {
+    uploaded = photo;
+    uploadedVideo = video;
+    notes.add(note);
+  }
+
+  CheckinVideo? uploadedVideo;
+  final notes = <String>[];
+  List<FeedItem> feedItems = [];
+  BeforeShot? before;
+  Uint8List? savedBefore;
+
+  @override
+  Future<void> saveBefore(String roomId, Uint8List jpeg, String note) async {
+    savedBefore = jpeg;
+    notes.add('before:$note');
+  }
+
+  @override
+  Future<BeforeShot?> beforeToday(String roomId) async => before;
+
+  @override
+  Future<List<FeedItem>> feed(String roomId) async => feedItems;
 
   List<MyCheckin> mine = [];
   final actions = <String>[];
@@ -102,6 +127,49 @@ class _FakeRooms implements RoomService {
 }
 
 Widget _wrap(Widget child) => MaterialApp(home: child);
+
+/// 'mvhd' 상자만 있는 가짜 MP4. [version] 1이면 64비트 길이를 쓴다.
+Uint8List _fakeMp4(double seconds, {int version = 0}) {
+  const timescale = 600;
+  final duration = (seconds * timescale).round();
+  final b = BytesBuilder()
+    ..add([0, 0, 0, 0, 0x66, 0x74, 0x79, 0x70]) // ftyp 머리 흉내
+    ..add([0, 0, 0, 120])
+    ..add('mvhd'.codeUnits)
+    ..add([version, 0, 0, 0]);
+  final d = ByteData(version == 1 ? 28 : 16);
+  if (version == 1) {
+    d.setUint32(16, timescale);
+    d.setUint32(20, 0);
+    d.setUint32(24, duration);
+  } else {
+    d.setUint32(8, timescale);
+    d.setUint32(12, duration);
+  }
+  b.add(d.buffer.asUint8List());
+  b.add(List.filled(64, 0));
+  return b.toBytes();
+}
+
+FeedItem _feedItem({String nick = '철수', FeedMedia media = FeedMedia.photo, String? url, String? note, String? beforeUrl, String? beforeNote}) =>
+    FeedItem(
+      nickname: nick,
+      nicknameNo: 1,
+      isMe: false,
+      date: DateTime(2026, 11, 11),
+      checkedAt: DateTime(2026, 11, 11, 21, 5),
+      media: media,
+      mediaUrl: url,
+      note: note,
+      beforeUrl: beforeUrl,
+      beforeNote: beforeNote,
+    );
+
+void _tall(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+}
 
 void main() {
   test('초대 링크는 앱 주소에 invite 값만 붙인다', () {
@@ -155,7 +223,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '방 만들기'));
     await tester.pumpAndSettle();
-    expect(rooms.created, ['명재']);
+    expect(rooms.created, ['명재:result']);
     expect(result, 'room-1');
   });
 
@@ -218,9 +286,9 @@ void main() {
     addTearDown(tester.view.reset);
     final rooms = _FakeRooms();
     final photo = img.encodePng(img.Image(width: 40, height: 30));
-    await tester.pumpWidget(_wrap(CheckInScreen(rooms: rooms, roomId: 'room-1', picker: () async => photo)));
+    await tester.pumpWidget(_wrap(CheckInScreen(rooms: rooms, roomId: 'room-1', picker: () async => PickedFile(photo, 'a.png'))));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('사진 고르기'));
+    await tester.tap(find.widgetWithText(OutlinedButton, '사진'));
     await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '인증 저장')).onPressed, isNull);
     await tester.ensureVisible(find.text('오늘 5분 정리를 실제로 했어요'));
@@ -288,5 +356,139 @@ void main() {
   testWidgets('이탈로 요소가 줄어도 정리된 요소는 남는다', (tester) async {
     await tester.pumpWidget(_wrap(const SizedBox(width: 400, child: DeskView(total: 3, tidied: 5))));
     expect(find.bySemanticsLabel('공동 책상, 물건 5개 중 5개 정리됨'), findsOneWidget);
+  });
+
+  test('동영상 길이를 MP4·MOV 머리에서 읽고 5초 이상이면 막는다', () {
+    expect(mp4DurationSeconds(_fakeMp4(3.2)), closeTo(3.2, 0.01));
+    expect(mp4DurationSeconds(_fakeMp4(4.5, version: 1)), closeTo(4.5, 0.01));
+    expect(mp4DurationSeconds(Uint8List.fromList(List.filled(100, 0))), isNull);
+
+    final ok = prepareCheckinVideo(_fakeMp4(4.9), 'IMG_0001.MOV');
+    expect(ok.ext, 'mov');
+    expect(ok.contentType, 'video/quicktime');
+    expect(() => prepareCheckinVideo(_fakeMp4(5.0), 'a.mp4'), throwsA(isA<PhotoException>()));
+    expect(() => prepareCheckinVideo(_fakeMp4(2), 'a.webm'), throwsA(isA<PhotoException>()));
+  });
+
+  testWidgets('방을 만들 때 인증 방식을 고른다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms();
+    await tester.pumpWidget(_wrap(RoomEntryScreen(rooms: rooms)));
+    await tester.pumpAndSettle();
+    expect(find.text('결과 인증'), findsOneWidget);
+    expect(find.text('가벼운 인증'), findsOneWidget);
+    await tester.tap(find.text('전후 인증'));
+    await tester.pump();
+    await tester.enterText(find.widgetWithText(TextField, '이 방에서 쓸 닉네임'), '명재');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '방 만들기'));
+    await tester.pumpAndSettle();
+    expect(rooms.created, ['명재:before_after']);
+  });
+
+  testWidgets('가벼운 인증: 한 줄을 적어야 "했어요"를 누를 수 있다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms();
+    await tester.pumpWidget(_wrap(CheckInScreen(rooms: rooms, roomId: 'room-1', mode: CheckinMode.light)));
+    await tester.pumpAndSettle();
+    final button = find.widgetWithText(FilledButton, '했어요');
+    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+    await tester.enterText(find.byType(TextField), '서랍 정리 끝');
+    await tester.pump();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(rooms.notes, ['서랍 정리 끝']);
+    expect(rooms.uploaded, isNull);
+  });
+
+  testWidgets('결과 인증: 5초 미만 동영상과 한 줄을 올리고, 5초 이상은 막는다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms();
+    var clip = _fakeMp4(6);
+    await tester.pumpWidget(_wrap(CheckInScreen(
+      rooms: rooms,
+      roomId: 'room-1',
+      videoPicker: () async => PickedFile(clip, 'clip.mp4'),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('동영상 (5초 미만)'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('5초 미만 동영상만'), findsOneWidget);
+
+    clip = _fakeMp4(3);
+    await tester.tap(find.text('동영상 (5초 미만)'));
+    await tester.pumpAndSettle();
+    expect(find.text('동영상 3.0초 선택됨'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, '한 줄 (선택)'), '책상 위 싹 비움');
+    await tester.tap(find.text('오늘 5분 정리를 실제로 했어요'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '인증 저장'));
+    await tester.pumpAndSettle();
+    expect(rooms.uploadedVideo?.seconds, closeTo(3, 0.01));
+    expect(rooms.notes, ['책상 위 싹 비움']);
+  });
+
+  testWidgets('전후 인증: 전 사진과 한 줄을 먼저 올리고, 후 사진과 한 줄로 인증한다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms();
+    final photo = img.encodePng(img.Image(width: 40, height: 30));
+    await tester.pumpWidget(_wrap(CheckInScreen(
+      rooms: rooms,
+      roomId: 'room-1',
+      mode: CheckinMode.beforeAfter,
+      picker: () async => PickedFile(photo, 'a.png'),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('정리 전 사진'), findsOneWidget);
+
+    await tester.tap(find.text('전 사진 고르기'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '전 한 줄 (선택)'), '폭탄 맞은 책상');
+    await tester.tap(find.widgetWithText(FilledButton, '전 사진 올리기'));
+    await tester.pumpAndSettle();
+    expect(rooms.savedBefore, isNotNull);
+    expect(find.text('정리 후 사진'), findsOneWidget);
+    expect(find.text('폭탄 맞은 책상'), findsOneWidget);
+
+    await tester.tap(find.text('후 사진 고르기'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, '후 한 줄 (선택)'), '이제 공부 가능');
+    await tester.ensureVisible(find.text('오늘 5분 정리를 실제로 했어요'));
+    await tester.tap(find.text('오늘 5분 정리를 실제로 했어요'));
+    await tester.pump();
+    await tester.ensureVisible(find.widgetWithText(FilledButton, '인증 저장'));
+    await tester.tap(find.widgetWithText(FilledButton, '인증 저장'));
+    await tester.pumpAndSettle();
+    expect(rooms.notes, ['before:폭탄 맞은 책상', '이제 공부 가능']);
+    expect(rooms.uploaded, isNotNull);
+  });
+
+  testWidgets('전 사진을 이미 올렸으면 바로 후 단계로 시작한다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms()..before = const BeforeShot(url: '', note: '아침의 책상');
+    await tester.pumpWidget(_wrap(CheckInScreen(rooms: rooms, roomId: 'room-1', mode: CheckinMode.beforeAfter)));
+    await tester.pumpAndSettle();
+    expect(find.text('정리 후 사진'), findsOneWidget);
+    expect(find.text('아침의 책상'), findsOneWidget);
+  });
+
+  testWidgets('방 피드: 전후 카드는 넘겨서 후 한 줄을 보고, 가벼운 인증은 한 줄 카드로 보인다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 2, active: 2, n0: 2, goal: 4, total: 6)
+      ..feedItems = [
+        _feedItem(url: 'https://x/after.jpg', note: '깨끗!', beforeUrl: 'https://x/before.jpg', beforeNote: '엉망'),
+        _feedItem(nick: '영희', media: FeedMedia.none, note: '서랍 정리 끝'),
+      ];
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FeedCard), findsNWidgets(2));
+    expect(find.text('서랍 정리 끝'), findsOneWidget);
+    Text note() => tester.widget<Text>(find.byKey(const Key('beforeAfterNote')));
+    expect(note().data, '엉망');
+    await tester.drag(find.byKey(const Key('beforeAfterPager')), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(note().data, '깨끗!');
   });
 }
