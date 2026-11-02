@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/room.dart';
+import '../utils/video.dart';
 
 /// 서버 함수가 보낸 오류 코드를 사용자 문구로 바꾼다.
 String roomErrorMessage(Object error) {
@@ -21,6 +22,11 @@ String roomErrorMessage(Object error) {
     'already_checked_in': '오늘은 이미 인증했어요.',
     'invalid_ticket': '사진 올리기 시간이 지났어요. 다시 시도해 주세요.',
     'not_member': '이 방의 참가자가 아니에요.',
+    'before_required': '먼저 정리 전 사진을 올려 주세요.',
+    'note_required': '한 줄을 적어 주세요.',
+    'bad_media': '이 방에서는 올릴 수 없는 파일이에요.',
+    'media_required': '사진이나 동영상을 골라 주세요.',
+    'wrong_mode': '이 방의 인증 방식과 맞지 않아요.',
   };
   for (final entry in messages.entries) {
     if (text.contains(entry.key)) return entry.value;
@@ -34,13 +40,23 @@ abstract class RoomService {
   Future<RoomSummary> summary(String roomId);
   Future<List<RoomMember>> members(String roomId);
   Future<InvitePreview?> preview(String code);
-  Future<String> create(String nickname);
+  Future<String> create(String nickname, {CheckinMode mode = CheckinMode.result});
   Future<String> join(String code, String nickname);
   Future<void> confirmStart(String roomId);
   Future<void> leave(String roomId);
 
-  /// 이미 압축한 JPEG을 올리고 오늘 인증으로 저장한다.
-  Future<void> checkIn(String roomId, Uint8List jpeg, String memo);
+  /// 오늘 인증을 저장한다. 사진은 이미 압축한 JPEG, 동영상은 확인을 마친 파일.
+  /// 가벼운 인증은 [photo]·[video] 없이 한 줄만 보낸다. 전후 인증은 [photo]가 '후' 사진이다.
+  Future<void> checkIn(String roomId, {Uint8List? photo, CheckinVideo? video, required String note});
+
+  /// 전후 인증의 '전' 사진과 한 줄을 올려 둔다.
+  Future<void> saveBefore(String roomId, Uint8List jpeg, String note);
+
+  /// 오늘 올려 둔 '전' 사진. 없으면 null.
+  Future<BeforeShot?> beforeToday(String roomId);
+
+  /// 방 피드: 참가자들의 인증 카드, 최신순.
+  Future<List<FeedItem>> feed(String roomId);
 
   Future<List<MyCheckin>> myCheckins(String roomId);
 
@@ -79,8 +95,8 @@ class SupabaseRoomService implements RoomService {
   }
 
   @override
-  Future<String> create(String nickname) async {
-    final row = await _db.rpc('create_room', params: {'nick': nickname});
+  Future<String> create(String nickname, {CheckinMode mode = CheckinMode.result}) async {
+    final row = await _db.rpc('create_room', params: {'nick': nickname, 'mode': mode.serverName});
     return (row as Map<String, dynamic>)['id'] as String;
   }
 
@@ -111,25 +127,88 @@ class SupabaseRoomService implements RoomService {
   /// 서버에서 목록 제외가 끝난 뒤 파일을 지운다. 파일 삭제가 실패해도
   /// 이미 아무도 볼 수 없고, 남은 파일은 운영 점검에서 7일 안에 정리한다.
   Future<void> _removeAfter(Future<dynamic> call) async {
-    final path = await call as String?;
-    if (path == null) return;
+    final result = await call;
+    final paths = result is List ? result.cast<String>() : [if (result is String) result];
+    if (paths.isEmpty) return;
     try {
-      await _db.storage.from('checkins').remove([path]);
+      await _db.storage.from('checkins').remove(paths);
     } catch (_) {}
   }
 
-  @override
-  Future<void> checkIn(String roomId, Uint8List jpeg, String memo) async {
-    final ticket = await _db.rpc('issue_upload', params: {'r': roomId}) as Map<String, dynamic>;
+  /// 서버가 발급한 경로에 파일을 올리고 그 경로의 발급 ID를 돌려준다.
+  Future<String> _upload(String roomId, Uint8List bytes, String ext, String contentType) async {
+    final ticket = await _db.rpc('issue_upload', params: {'r': roomId, 'ext': ext}) as Map<String, dynamic>;
     await _db.storage.from('checkins').uploadBinary(
           ticket['path'] as String,
-          jpeg,
-          fileOptions: const FileOptions(contentType: 'image/jpeg'),
+          bytes,
+          fileOptions: FileOptions(contentType: contentType),
         );
+    return ticket['id'] as String;
+  }
+
+  @override
+  Future<void> saveBefore(String roomId, Uint8List jpeg, String note) async {
+    final ticket = await _upload(roomId, jpeg, 'jpg', 'image/jpeg');
+    await _removeAfter(_db.rpc('save_before', params: {'r': roomId, 'ticket': ticket, 'note': note}));
+  }
+
+  @override
+  Future<BeforeShot?> beforeToday(String roomId) async {
+    final rows = await _db.rpc('my_before_today', params: {'r': roomId}) as List;
+    if (rows.isEmpty) return null;
+    final row = rows.first as Map<String, dynamic>;
+    final url = await _db.storage.from('checkins').createSignedUrl(row['path'] as String, 3600);
+    return BeforeShot(url: url, note: row['note'] as String?);
+  }
+
+  @override
+  Future<List<FeedItem>> feed(String roomId) async {
+    final rows = (await _db.rpc('room_feed', params: {'r': roomId}) as List).cast<Map<String, dynamic>>();
+    final paths = <String>{
+      for (final r in rows) ...[
+        if (r['media_path'] != null) r['media_path'] as String,
+        if (r['before_path'] != null) r['before_path'] as String,
+      ],
+    }.toList();
+    final urls = <String, String>{};
+    if (paths.isNotEmpty) {
+      for (final s in await _db.storage.from('checkins').createSignedUrlsResult(paths, 3600)) {
+        if (s is SignedUrlSuccess) urls[s.path] = s.signedUrl;
+      }
+    }
+    return [
+      for (final r in rows)
+        FeedItem(
+          nickname: r['nickname'] as String,
+          nicknameNo: r['nickname_no'] as int,
+          isMe: r['is_me'] as bool,
+          date: DateTime.parse(r['slot_date'] as String),
+          checkedAt: DateTime.parse(r['checked_at'] as String),
+          media: switch (r['media_type']) {
+            'video' => FeedMedia.video,
+            'none' => FeedMedia.none,
+            _ => FeedMedia.photo,
+          },
+          mediaUrl: urls[r['media_path']],
+          note: r['note'] as String?,
+          beforeUrl: urls[r['before_path']],
+          beforeNote: r['before_note'] as String?,
+        ),
+    ];
+  }
+
+  @override
+  Future<void> checkIn(String roomId, {Uint8List? photo, CheckinVideo? video, required String note}) async {
+    String? ticket;
+    if (video != null) {
+      ticket = await _upload(roomId, video.bytes, video.ext, video.contentType);
+    } else if (photo != null) {
+      ticket = await _upload(roomId, photo, 'jpg', 'image/jpeg');
+    }
     await _db.rpc('submit_checkin', params: {
       'r': roomId,
-      'ticket': ticket['id'],
-      'note': memo.isEmpty ? null : memo,
+      'ticket': ticket,
+      'note': note.isEmpty ? null : note,
     });
   }
 }

@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../models/room.dart';
 import '../services/room_service.dart';
 import '../theme.dart';
 import '../utils/format.dart';
-import '../utils/photo.dart';
 import '../widgets/desk_view.dart';
 import '../widgets/jd_widgets.dart';
+import '../widgets/room_feed.dart';
+import 'checkin_screen.dart';
 
 /// 초대 링크: 앱 주소에 `?invite=코드`를 붙인다. OAuth의 `code` 파라미터와 겹치지 않는다.
 String inviteLink(Uri base, String code) => Uri(
@@ -47,6 +47,7 @@ class _RoomScreenState extends State<RoomScreen> {
   RoomSummary? _summary;
   List<RoomMember> _members = [];
   List<MyCheckin> _mine = [];
+  List<FeedItem> _feed = [];
   bool _loadFailed = false;
   bool _busy = false;
 
@@ -62,9 +63,13 @@ class _RoomScreenState extends State<RoomScreen> {
       final m = await widget.rooms.members(widget.roomId);
       // 내 인증 목록을 못 불러와도 방 화면은 보여 준다.
       var mine = <MyCheckin>[];
+      var feed = <FeedItem>[];
       if (s.status != RoomStatus.recruiting) {
         try {
           mine = await widget.rooms.myCheckins(widget.roomId);
+        } catch (_) {}
+        try {
+          feed = await widget.rooms.feed(widget.roomId);
         } catch (_) {}
       }
       if (!mounted) return;
@@ -72,6 +77,7 @@ class _RoomScreenState extends State<RoomScreen> {
         _summary = s;
         _members = m;
         _mine = mine;
+        _feed = feed;
         _loadFailed = false;
       });
     } catch (_) {
@@ -150,7 +156,13 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _openCheckIn() async {
     final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => CheckInScreen(rooms: widget.rooms, roomId: widget.roomId)),
+      MaterialPageRoute(
+        builder: (_) => CheckInScreen(
+          rooms: widget.rooms,
+          roomId: widget.roomId,
+          mode: _summary?.checkinMode ?? CheckinMode.result,
+        ),
+      ),
     );
     if (saved == true) {
       await _load();
@@ -213,6 +225,33 @@ class _RoomScreenState extends State<RoomScreen> {
         const SizedBox(height: 18),
         if (status == RoomStatus.recruiting) _InviteCard(code: s.inviteCode, link: inviteLink(Uri.base, s.inviteCode)),
         if (status == RoomStatus.active || status == RoomStatus.finished) _ProgressCard(summary: s),
+        if (showChecks) ...[
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              const Text('방 피드', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: JdColors.togetherChip, borderRadius: BorderRadius.circular(8)),
+                child: Text(s.checkinMode.label,
+                    style: const TextStyle(fontSize: 12, color: JdColors.togetherText, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (_feed.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('아직 인증이 없어요. 첫 인증을 올려 보세요!', style: TextStyle(color: JdColors.faint)),
+            ),
+          for (final item in _feed)
+            FeedCard(
+              item: item,
+              avatarIndex: _members.indexWhere((m) => m.nickname == item.nickname && m.nicknameNo == item.nicknameNo)
+                  .clamp(0, 99),
+            ),
+        ],
         if (_mine.isNotEmpty) ...[
           const SizedBox(height: 24),
           const Text('내 인증', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
@@ -306,8 +345,11 @@ class _RoomScreenState extends State<RoomScreen> {
         RoomStatus.recruiting =>
           '2~4명이 모이면 방장이 시작을 확정해요. ${formatDateTime(s.recruitExpiresAt.toLocal())}까지 모집해요.',
         RoomStatus.scheduled => '${formatDateTime(s.startsAt!.toLocal())}에 시작해서 3일 동안 진행해요.',
-        RoomStatus.active =>
-          '하루 한 번, 내 구역을 5분 정리하고 사진으로 인증해요. ${formatDateTime(s.endsAt!.toLocal())}에 끝나요.',
+        RoomStatus.active => '하루 한 번, 내 구역을 5분 정리하고 ${switch (s.checkinMode) {
+            CheckinMode.result => '사진이나 짧은 동영상으로',
+            CheckinMode.beforeAfter => '전후 사진으로',
+            CheckinMode.light => '한 줄로',
+          }} 인증해요. ${formatDateTime(s.endsAt!.toLocal())}에 끝나요.',
         RoomStatus.finished => s.goalReachedAt != null
             ? '공동 목표를 달성했어요! 마지막 책상과 배지는 그대로 남아요.'
             : '마지막 책상과 정리한 요소는 그대로 남아요.',
@@ -407,126 +449,6 @@ class _ProgressCard extends StatelessWidget {
             ),
           const SizedBox(height: 4),
           Text('현재 유효 인증 ${s.validCount}회', style: const TextStyle(fontSize: 12, color: JdColors.faint)),
-        ],
-      ),
-    );
-  }
-}
-
-/// 오늘 인증: 사진 선택 → 미리보기·공유 안내 → 완료 체크·메모 → 저장.
-class CheckInScreen extends StatefulWidget {
-  const CheckInScreen({super.key, required this.rooms, required this.roomId, this.picker});
-
-  final RoomService rooms;
-  final String roomId;
-  final Future<Uint8List?> Function()? picker;
-
-  @override
-  State<CheckInScreen> createState() => _CheckInScreenState();
-}
-
-class _CheckInScreenState extends State<CheckInScreen> {
-  final _memo = TextEditingController();
-  Uint8List? _photo;
-  bool _checked = false;
-  bool _busy = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _memo.dispose();
-    super.dispose();
-  }
-
-  Future<Uint8List?> _pick() async {
-    final file = await ImagePicker().pickImage(source: ImageSource.gallery);
-    return file?.readAsBytes();
-  }
-
-  Future<void> _choose() async {
-    setState(() => _error = null);
-    try {
-      final bytes = await (widget.picker ?? _pick)();
-      if (bytes == null) return;
-      final prepared = prepareCheckinPhoto(bytes);
-      if (mounted) setState(() => _photo = prepared);
-    } on PhotoException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    } catch (_) {
-      if (mounted) setState(() => _error = '사진을 불러오지 못했어요. 다른 사진을 골라 주세요.');
-    }
-  }
-
-  Future<void> _submit() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await widget.rooms.checkIn(widget.roomId, _photo!, _memo.text.trim());
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = roomErrorMessage(e);
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('오늘 정리 인증')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text('오늘 정리한 뒤 새로 찍은 사진 한 장을 골라 주세요.', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 12),
-          if (_photo != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.memory(_photo!, height: 280, fit: BoxFit.cover),
-            ),
-          OutlinedButton.icon(
-            onPressed: _busy ? null : _choose,
-            icon: const Icon(Icons.photo_library),
-            label: Text(_photo == null ? '사진 고르기' : '다른 사진 고르기'),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Text(
-                '· 이 방의 현재 참가자에게 공유돼요\n'
-                '· 서버에 저장돼요 (위치정보는 지우고 올려요)\n'
-                '· 내 기록에서 사진 삭제나 인증 취소를 할 수 있어요\n'
-                '· 테스트가 끝나면 7일 안에 삭제돼요\n'
-                '얼굴·주소·문서가 찍히지 않았는지 미리보기에서 확인해 주세요.',
-                style: theme.textTheme.bodySmall,
-              ),
-            ),
-          ),
-          CheckboxListTile(
-            value: _checked,
-            onChanged: _busy ? null : (v) => setState(() => _checked = v ?? false),
-            title: const Text('오늘 5분 정리를 실제로 했어요'),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: EdgeInsets.zero,
-          ),
-          TextField(
-            controller: _memo,
-            enabled: !_busy,
-            maxLength: 200,
-            decoration: const InputDecoration(labelText: '메모 (선택)'),
-          ),
-          if (_error != null) Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-          const SizedBox(height: 8),
-          FilledButton(
-            onPressed: _photo != null && _checked && !_busy ? _submit : null,
-            child: Text(_busy ? '올리는 중...' : '인증 저장'),
-          ),
         ],
       ),
     );
