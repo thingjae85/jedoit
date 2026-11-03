@@ -80,8 +80,9 @@ class _FakeRooms implements RoomService {
     return 'room-1';
   }
 
+  final starts = <bool>[];
   @override
-  Future<void> confirmStart(String roomId) async {}
+  Future<void> confirmStart(String roomId, {bool tomorrow = false}) async => starts.add(tomorrow);
   @override
   Future<void> leave(String roomId) async {}
   @override
@@ -299,8 +300,8 @@ void main() {
 
     await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
     await tester.pumpAndSettle();
-    expect(find.text('1 / 10'), findsOneWidget);
-    expect(find.textContaining('공동 목표 7회까지 6회'), findsOneWidget);
+    expect(find.text('1 / 7'), findsOneWidget);
+    expect(find.textContaining('공동 목표까지 6회'), findsOneWidget);
     expect(find.textContaining('참가자가 나가서'), findsOneWidget);
 
     expect(find.text('오늘 인증하기'), findsOneWidget);
@@ -338,8 +339,8 @@ void main() {
     await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
     await tester.pumpAndSettle();
 
-    expect(find.text('1 / 10'), findsOneWidget);
-    expect(find.text('10%'), findsOneWidget);
+    expect(find.text('1 / 7'), findsOneWidget);
+    expect(find.text('14%'), findsOneWidget);
     expect(find.text('11/11 인증 완료'), findsOneWidget);
 
     await tester.tap(find.byTooltip('인증 관리'));
@@ -351,7 +352,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(rooms.actions, ['photo 11']);
     expect(find.text('사진 삭제됨 · 완료 체크 유지'), findsOneWidget);
-    expect(find.text('1 / 10'), findsOneWidget);
+    expect(find.text('1 / 7'), findsOneWidget);
 
     await tester.tap(find.byTooltip('인증 관리'));
     await tester.pumpAndSettle();
@@ -374,7 +375,7 @@ void main() {
       ..failMine = true;
     await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
     await tester.pumpAndSettle();
-    expect(find.text('1 / 10'), findsOneWidget);
+    expect(find.text('1 / 7'), findsOneWidget);
     expect(find.text('내 인증'), findsNothing);
   });
 
@@ -702,5 +703,52 @@ void main() {
     expect(find.byKey(const Key('dayGrid')), findsOneWidget);
     expect(find.text('1 / 30'), findsOneWidget);
     expect(find.text('0 / 30'), findsOneWidget);
+  });
+
+  testWidgets('공동 목표를 채우면 진행도가 100%가 된다', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 4, active: 2, n0: 2, goal: 4, total: 6);
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
+    await tester.pumpAndSettle();
+    expect(find.text('100%'), findsOneWidget);
+    expect(find.text('4 / 4'), findsOneWidget);
+    expect(find.text('공동 목표 달성! 배지를 받았어요'), findsOneWidget);
+  });
+
+  test('한국 시간 18시부터는 내일부터를 권한다', () {
+    expect(suggestTomorrow(DateTime.utc(2026, 11, 2, 8, 59)), isFalse); // 17:59 KST
+    expect(suggestTomorrow(DateTime.utc(2026, 11, 2, 9)), isTrue); // 18:00 KST
+    expect(suggestTomorrow(DateTime.utc(2026, 11, 2, 15)), isFalse); // 00:00 KST
+  });
+
+  testWidgets('시작 확정 때 오늘부터/내일부터를 고를 수 있다', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final rooms = _FakeRooms()
+      ..current = _summary(active: 2)
+      ..people = const [
+        RoomMember(nickname: '명재', nicknameNo: 1, isMe: true, isHost: true, checkins: 0),
+        RoomMember(nickname: '친구', nicknameNo: 1, isMe: false, isHost: false, checkins: 0),
+      ];
+    final evening = DateTime.utc(2026, 11, 11, 11); // 20:00 KST
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => evening, autoRefresh: null)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('이 인원으로 시작 확정'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('내일부터를 추천해요'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('startTomorrow')));
+    await tester.pumpAndSettle();
+    expect(find.text('확정했어요! 내일 0시에 시작해요'), findsOneWidget);
+
+    await tester.tap(find.text('이 인원으로 시작 확정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('startToday')));
+    await tester.pumpAndSettle();
+    expect(rooms.starts, [true, false]);
   });
 }

@@ -52,7 +52,8 @@ abstract class RoomService {
     int days = 3,
   });
   Future<String> join(String code, String nickname);
-  Future<void> confirmStart(String roomId);
+  /// 시작 확정. [tomorrow]면 내일 0시(한국 시간)에 시작하고, 아니면 오늘이 1일차다.
+  Future<void> confirmStart(String roomId, {bool tomorrow = false});
   Future<void> leave(String roomId);
 
   /// 오늘 인증을 저장한다. 사진은 이미 압축한 JPEG, 동영상은 확인을 마친 파일.
@@ -130,7 +131,8 @@ class SupabaseRoomService implements RoomService {
       await _db.rpc('join_room', params: {'code': code, 'nick': nickname}) as String;
 
   @override
-  Future<void> confirmStart(String roomId) => _db.rpc('confirm_start', params: {'r': roomId});
+  Future<void> confirmStart(String roomId, {bool tomorrow = false}) =>
+      _db.rpc('confirm_start', params: {'r': roomId, 'tomorrow': tomorrow});
 
   @override
   Future<void> leave(String roomId) => _db.rpc('leave_room', params: {'r': roomId});

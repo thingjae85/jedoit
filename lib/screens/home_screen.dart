@@ -716,7 +716,7 @@ class _ChallengeCard extends StatelessWidget {
     if (r != null) {
       title = roomStatusTitle(status!);
       detail = showProgress
-          ? '${r.challengeName} · 진행도 ${r.earned} / ${r.totalElements}'
+          ? '${r.challengeName} · 목표 ${r.earned} / ${r.goal ?? r.totalElements}회'
           : '${r.challengeName} · 방에 들어가서 확인해 보세요';
     } else if (invited) {
       title = '초대받은 방이 있어요';
@@ -746,10 +746,17 @@ class _ChallengeCard extends StatelessWidget {
                     Text(detail,
                         style: const TextStyle(
                             fontSize: 13, color: JdColors.subtle)),
-                    if (showProgress && r!.totalElements > 0) ...[
+                    if (showProgress && (r!.goal ?? r.totalElements) > 0) ...[
                       const SizedBox(height: 10),
-                      ElementBar(
-                          earned: r.earned, total: r.totalElements, height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: (r.earned / (r.goal ?? r.totalElements)).clamp(0.0, 1.0).toDouble(),
+                          minHeight: 6,
+                          backgroundColor: Colors.white,
+                          color: JdColors.together,
+                        ),
+                      ),
                     ],
                   ],
                 ),
