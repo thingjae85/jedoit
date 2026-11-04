@@ -178,7 +178,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
           children: [
             _Stat(label: '이번 달 완료', value: '${monthRecords.length}개'),
             const SizedBox(width: 10),
-            _Stat(label: '연속 실천', value: '${_streak(byDay, today)}일'),
+            // 연속 기록은 한 번 끊기면 0이 돼서 의욕을 꺾는다. 끊겨도 줄지 않는 '해낸 날'을 센다.
+            _Stat(label: '이번 달 해낸 날', value: '${monthRecords.map((r) => dayOf(r.completedAt)).toSet().length}일'),
             const SizedBox(width: 10),
             _Stat(label: '전체 기록', value: '${records.length}개'),
           ],
@@ -204,17 +205,6 @@ class _RecordsScreenState extends State<RecordsScreen> {
           _RecordTile(record: r, onDelete: _deleting ? null : () => _deleteOne(r)),
       ],
     );
-  }
-
-  /// 오늘(오늘 기록이 없으면 어제)부터 거꾸로 이어진 기록한 날 수.
-  static int _streak(Map<DateTime, List<MissionRecord>> byDay, DateTime today) {
-    var day = byDay.containsKey(today) ? today : today.subtract(const Duration(days: 1));
-    var count = 0;
-    while (byDay.containsKey(day)) {
-      count++;
-      day = DateTime(day.year, day.month, day.day - 1);
-    }
-    return count;
   }
 }
 

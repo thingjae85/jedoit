@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/growth.dart';
 import '../models/mission.dart';
 import '../models/mission_record.dart';
 import '../models/room.dart';
@@ -17,7 +18,7 @@ import 'room_entry_screen.dart';
 import 'room_screen.dart';
 
 /// 앱 첫 화면. 아래 탭으로 홈·챌린지·기록·마이를 오간다.
-/// 챌린지 탭은 화면을 바꾸지 않고 방 화면(또는 방 만들기)을 연다.
+/// 홈은 혼자 하는 미션과 내 성장만 보여 주고, 친구·방 관련은 모두 챌린지 탭에 둔다.
 class HomeScreen extends StatefulWidget {
   const HomeScreen(
       {super.key,
@@ -61,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadRoom();
     // 초대 QR·링크로 열었으면 바로 참가 흐름을 띄운다 (Google 로그인 후 돌아와도 같은 방으로).
     if (_challengeAvailable && widget.drafts?.invite != null) {
+      _tab = _challengeTab;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _openChallenge();
       });
@@ -172,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// 홈의 친구 줄과 챌린지 카드에 쓸 내 방. 실패해도 홈은 그대로 쓴다.
+  /// 챌린지 탭의 친구 줄과 챌린지 카드에 쓸 내 방. 실패해도 홈은 그대로 쓴다.
   Future<void> _loadRoom() async {
     final rooms = widget.rooms;
     if (rooms == null || !(widget.account?.signedIn ?? false)) {
@@ -270,6 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openMission(Mission mission) async {
+    final before = growthPoints(_records)[mission.id] ?? 0;
     final saved = await Navigator.of(context).push<MissionRecord>(
       MaterialPageRoute(
         builder: (_) =>
@@ -280,13 +283,37 @@ class _HomeScreenState extends State<HomeScreen> {
     if (saved == null) return;
     final message = await _saveToAccount(saved);
     if (!mounted) return;
+    final stat = growthStatFor(mission.id);
+    if (stat != null) {
+      final from = GrowthLevel.of(before).level;
+      final to = GrowthLevel.of(before + 1).level;
+      if (to > from) await _showLevelUp(stat, to);
+      if (!mounted) return;
+    }
     final offerSignIn = widget.account != null && !widget.account!.signedIn;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Text(stat == null ? message : '${stat.name} +1 · $message'),
         action: offerSignIn
             ? SnackBarAction(label: 'Google 로그인', onPressed: _signIn)
             : null,
+      ),
+    );
+  }
+
+  Future<void> _showLevelUp(GrowthStat stat, int level) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(stat.icon, color: stat.color, size: 40),
+        title: Text('${stat.name} 레벨 $level!'),
+        content: const Text('작은 행동이 쌓여서 한 단계 자랐어요.\n오늘의 나, 꽤 괜찮아요.',
+            textAlign: TextAlign.center),
+        actions: [
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('좋아요')),
+        ],
       ),
     );
   }
@@ -299,10 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _selectTab(int index) {
     if (index != _recordsTab) _recordsDay = null;
-    if (index == _challengeTab) {
-      _openChallenge();
-      return;
-    }
+    if (index == _challengeTab) _loadRoom();
     if (index == _homeTab) _refreshCount();
     setState(() {
       if (index == _recordsTab) _recordsVersion++;
@@ -326,6 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onPickMission: () => _selectTab(_homeTab),
         ),
       _homeTab => _homeBody(context),
+      _challengeTab => _challengeBody(context),
       _ => _MyPage(
           account: widget.account,
           onSignIn: _signIn,
@@ -343,7 +368,9 @@ class _HomeScreenState extends State<HomeScreen> {
               selectedIcon: Icon(Icons.check_box),
               label: '홈'),
           NavigationDestination(
-              icon: Icon(Icons.groups_outlined), label: '챌린지'),
+              icon: Icon(Icons.groups_outlined),
+              selectedIcon: Icon(Icons.groups),
+              label: '챌린지'),
           NavigationDestination(
               icon: Icon(Icons.calendar_month_outlined),
               selectedIcon: Icon(Icons.calendar_month),
@@ -363,6 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final byDay = recordsByDay(_records);
     final todayRecords = byDay[today] ?? const <MissionRecord>[];
     final todayMissions = todayRecords.map((r) => r.missionId).toSet();
+    final away = _loadFailed ? 0 : daysAway(_records, today);
 
     return SafeArea(
       child: ListView(
@@ -385,23 +413,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.5)),
-              const Spacer(),
-              if (_challengeAvailable)
-                IconButton(
-                  tooltip: '친구 초대',
-                  icon: const Icon(Icons.person_add_alt_outlined),
-                  onPressed: _openChallenge,
-                ),
             ],
           ),
-          if (_challengeAvailable) ...[
-            const SizedBox(height: 12),
-            _FriendRow(
-              members: _members,
-              signedIn: widget.account!.signedIn,
-              onTap: _openChallenge,
+          const SizedBox(height: 14),
+          if (away >= 2)
+            _WelcomeBack(daysAway: away)
+          else
+            Text(
+              todayRecords.isEmpty
+                  ? '오늘은 하나만 해도 충분해요.'
+                  : '오늘도 나를 조금 키웠어요.',
+              style: const TextStyle(
+                  fontSize: 17, fontWeight: FontWeight.w700),
             ),
-          ],
           const SizedBox(height: 16),
           _WeekStrip(
             today: today,
@@ -416,9 +440,11 @@ class _HomeScreenState extends State<HomeScreen> {
           const Divider(height: 32),
           Row(
             children: [
-              const CategoryChip.solo(label: '혼자 미션'),
+              const Text('오늘 할 미션',
+                  style:
+                      TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               const Spacer(),
-              Text('오늘 할 미션',
+              Text('하나 하면 능력치가 올라요',
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
@@ -432,12 +458,57 @@ class _HomeScreenState extends State<HomeScreen> {
               completed: todayMissions.contains(mission.id),
               onTap: () => _openMission(mission),
             ),
-          if (_challengeAvailable) ...[
+          if (!_loadFailed) ...[
             const SizedBox(height: 22),
-            const Align(
-                alignment: Alignment.centerLeft,
-                child: CategoryChip.together(label: '친구와 챌린지')),
-            const SizedBox(height: 10),
+            _GrowthCard(records: _records),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 챌린지 탭: 친구와 함께하는 것은 모두 여기에 모은다.
+  Widget _challengeBody(BuildContext context) {
+    final available = _challengeAvailable;
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        children: [
+          Row(
+            children: [
+              const Text('친구와 챌린지',
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5)),
+              const Spacer(),
+              if (available)
+                IconButton(
+                  tooltip: '친구 초대',
+                  icon: const Icon(Icons.person_add_alt_outlined),
+                  onPressed: _openChallenge,
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text('혼자 하기 힘든 날엔 친구랑 같이 해 봐요. 원할 때만 써도 괜찮아요.',
+              style: TextStyle(fontSize: 13, color: JdColors.subtle)),
+          const SizedBox(height: 16),
+          if (!available)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('지금은 서버에 연결하지 못해 친구 챌린지를 쓸 수 없어요.',
+                    style: TextStyle(fontSize: 13)),
+              ),
+            )
+          else ...[
+            _FriendRow(
+              members: _members,
+              signedIn: widget.account!.signedIn,
+              onTap: _openChallenge,
+            ),
+            const SizedBox(height: 16),
             _ChallengeCard(
               room: _room,
               signedIn: widget.account!.signedIn,
@@ -445,6 +516,138 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: _openChallenge,
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 며칠 쉬다 돌아왔을 때. 쉰 날을 탓하지 않고 반겨 준다.
+class _WelcomeBack extends StatelessWidget {
+  const _WelcomeBack({required this.daysAway});
+
+  final int daysAway;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: JdColors.soloTint,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: const Row(
+        children: [
+          Text('👋', style: TextStyle(fontSize: 28)),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('다시 와줘서 반가워요',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: JdColors.soloText)),
+                SizedBox(height: 4),
+                Text('쉬었던 날도 괜찮아요. 그동안 키운 능력치는 그대로예요.\n오늘은 제일 쉬운 거 하나만 해 볼까요?',
+                    style: TextStyle(fontSize: 13, color: JdColors.subtle)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 내 능력치: 미션마다 키워 주는 능력이 있고, 쌓이기만 한다.
+class _GrowthCard extends StatelessWidget {
+  const _GrowthCard({required this.records});
+
+  final List<MissionRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final points = growthPoints(records);
+    final amounts = growthAmounts(points);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        color: JdColors.panel,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('내 능력치',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          const Text('작은 행동도 나를 키워요. 쉬어도 줄어들지 않아요.',
+              style: TextStyle(fontSize: 12, color: JdColors.subtle)),
+          const SizedBox(height: 12),
+          for (final stat in kGrowthStats)
+            _StatBar(stat: stat, points: points[stat.missionId] ?? 0),
+          const SizedBox(height: 4),
+          Text(
+            amounts.isEmpty
+                ? '첫 미션을 하면 여기에 해낸 양이 쌓여요.'
+                : '지금까지 ${amounts.join(' · ')}',
+            style: const TextStyle(fontSize: 12, color: JdColors.subtle),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatBar extends StatelessWidget {
+  const _StatBar({required this.stat, required this.points});
+
+  final GrowthStat stat;
+  final int points;
+
+  @override
+  Widget build(BuildContext context) {
+    final lv = GrowthLevel.of(points);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(stat.icon, size: 18, color: stat.color),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 48,
+            child: Text(stat.name,
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600)),
+          ),
+          SizedBox(
+            width: 40,
+            child: Text('Lv.${lv.level}',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: stat.color)),
+          ),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: lv.progress,
+                minHeight: 8,
+                backgroundColor: Colors.white,
+                color: stat.color,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 34,
+            child: Text('${lv.inLevel}/${lv.needed}',
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontSize: 11, color: JdColors.faint)),
+          ),
         ],
       ),
     );
@@ -603,11 +806,6 @@ class _WeekStrip extends StatelessWidget {
           loadFailed ? '기록을 불러오지 못했어요' : '오늘 $todayCount번 완료',
           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
         ),
-        if (!loadFailed)
-          Text(
-            todayCount == 0 ? '하나만 해도 좋은 시작이에요.' : '작은 실천이 쌓이고 있어요.',
-            style: const TextStyle(fontSize: 13, color: JdColors.subtle),
-          ),
       ],
     );
   }
