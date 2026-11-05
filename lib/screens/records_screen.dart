@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../models/mission.dart';
@@ -290,7 +292,7 @@ class _MonthGrid extends StatelessWidget {
           children: [
             DayBlob(
               count: missions,
-              full: missions >= kMissions.length,
+              full: missions >= kDailyMissionCount,
               today: isToday,
               future: day.isAfter(today),
               selected: day == selected,
@@ -318,19 +320,27 @@ class _RecordTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mission = missionById(record.missionId);
     final time = record.completedAt.toLocal();
+    final title = recordTitle(record);
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 52),
       child: Row(
         children: [
-          const CheckSquare(checked: true),
+          if (record.hasPhoto)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.memory(base64Decode(record.photo!),
+                  width: 40, height: 40, fit: BoxFit.cover, gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => const CheckSquare(checked: true)),
+            )
+          else
+            const CheckSquare(checked: true),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(mission?.title ?? '알 수 없는 미션', style: const TextStyle(fontSize: 15)),
+                Text(title, style: const TextStyle(fontSize: 15)),
                 if (record.memo.isNotEmpty)
                   Text(record.memo, style: const TextStyle(fontSize: 12, color: JdColors.faint)),
               ],

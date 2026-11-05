@@ -1,16 +1,23 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
-import '../models/growth.dart';
+import '../models/buddy.dart';
 import '../models/mission.dart';
 import '../models/mission_record.dart';
+import '../models/return_days.dart';
 import '../models/room.dart';
+import '../models/space.dart';
 import '../services/account_service.dart';
 import '../services/draft_store.dart';
 import '../services/room_service.dart';
 import '../services/record_repository.dart';
+import '../services/space_store.dart';
 import '../theme.dart';
 import '../utils/format.dart';
+import '../utils/photo.dart';
 import '../widgets/jd_widgets.dart';
+import '../widgets/space_view.dart';
 import 'design_compare_screen.dart';
 import 'mission_screen.dart';
 import 'records_screen.dart';
@@ -18,19 +25,29 @@ import 'room_entry_screen.dart';
 import 'room_screen.dart';
 
 /// 앱 첫 화면. 아래 탭으로 홈·챌린지·기록·마이를 오간다.
-/// 홈은 혼자 하는 미션과 내 성장만 보여 주고, 친구·방 관련은 모두 챌린지 탭에 둔다.
+/// 홈은 혼자 하는 미션과 내 공간만 보여 주고, 친구·방 관련은 모두 챌린지 탭에 둔다.
 class HomeScreen extends StatefulWidget {
   const HomeScreen(
       {super.key,
       required this.repository,
       this.account,
       this.rooms,
-      this.drafts});
+      this.drafts,
+      this.space,
+      this.missionsFor = dailyMissions,
+      this.pickPhoto = pickPhotoFromDevice});
 
   final RecordRepository repository;
   final AccountService? account;
   final RoomService? rooms;
   final DraftStore? drafts;
+
+  /// 내 공간 설정·내 미션·편지 저장소. 없으면 기기 저장소를 쓴다.
+  final SpaceStore? space;
+
+  /// 그날 홈에 나올 기본 미션. 테스트에서 고정한다.
+  final List<Mission> Function(DateTime day) missionsFor;
+  final PhotoPicker pickPhoto;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -51,6 +68,17 @@ class _HomeScreenState extends State<HomeScreen> {
   RoomSummary? _room;
   List<RoomMember> _members = [];
 
+  late final SpaceStore _space = widget.space ?? SpaceStore();
+  SpacePrefs _prefs = const SpacePrefs();
+
+  /// 방금 해낸 미션에 대한 캐릭터 한마디와 방에 생긴 변화.
+  String? _reaction;
+  String? _change;
+
+  /// 벽 액자에 걸린 사진(가장 최근에 사진을 남긴 기록).
+  String? _framePhotoId;
+  List<int>? _framePixels;
+
   bool get _challengeAvailable =>
       widget.account != null && widget.rooms != null;
 
@@ -59,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     widget.account?.addListener(_onAccountChanged);
     _refreshCount();
+    _loadPrefs();
     _loadRoom();
     // 초대 QR·링크로 열었으면 바로 참가 흐름을 띄운다 (Google 로그인 후 돌아와도 같은 방으로).
     if (_challengeAvailable && widget.drafts?.invite != null) {
@@ -265,35 +294,66 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _records = records;
         _loadFailed = false;
+        _updateFrame(records);
       });
     } catch (_) {
       if (mounted) setState(() => _loadFailed = true);
     }
   }
 
-  Future<void> _openMission(Mission mission) async {
-    final before = growthPoints(_records)[mission.id] ?? 0;
+  Future<void> _loadPrefs() async {
+    try {
+      final prefs = await _space.load();
+      if (mounted) setState(() => _prefs = prefs);
+    } catch (_) {}
+  }
+
+  /// 가장 최근에 사진을 남긴 기록이 벽 액자에 걸린다.
+  void _updateFrame(List<MissionRecord> records) {
+    MissionRecord? latest;
+    for (final r in records) {
+      if (r.hasPhoto && (latest == null || r.completedAt.isAfter(latest.completedAt))) latest = r;
+    }
+    if (latest?.id == _framePhotoId) return;
+    _framePhotoId = latest?.id;
+    _framePixels = latest == null ? null : photoPixels(latest.photo!);
+  }
+
+  Future<void> _openMission(Mission mission, {DiscoveryTheme? theme}) async {
+    final before = _records.length;
     final saved = await Navigator.of(context).push<MissionRecord>(
       MaterialPageRoute(
-        builder: (_) =>
-            MissionScreen(mission: mission, repository: widget.repository),
+        builder: (_) => MissionScreen(
+            mission: mission, repository: widget.repository, theme: theme, pickPhoto: widget.pickPhoto),
       ),
     );
     await _refreshCount();
     if (saved == null) return;
-    final message = await _saveToAccount(saved);
+    final message = await _saveToAccount(saved.withoutPhoto());
     if (!mounted) return;
-    final stat = growthStatFor(mission.id);
-    if (stat != null) {
-      final from = GrowthLevel.of(before).level;
-      final to = GrowthLevel.of(before + 1).level;
-      if (to > from) await _showLevelUp(stat, to);
+
+    final count = _loadFailed ? before + 1 : _records.length;
+    final event = spaceEventAt(count);
+    setState(() {
+      _reaction = buddyReaction(mission, withPhoto: saved.hasPhoto, seed: count);
+      final changes = [
+        if (event != null && !event.opensRoom) '${spaceRoomById(event.roomId)?.name ?? ''} · ${event.line}',
+        if (saved.hasPhoto) '사진이 벽 액자에 걸렸어요',
+      ];
+      _change = changes.isEmpty ? null : changes.join('\n');
+    });
+    if (event != null && event.opensRoom) {
+      // 새 방이 열리면 고정을 풀어 새 방이 바로 보이게 한다.
+      await _space.setPinnedRoom(null);
+      await _loadPrefs();
+      if (!mounted) return;
+      await _showNewRoom(event);
       if (!mounted) return;
     }
     final offerSignIn = widget.account != null && !widget.account!.signedIn;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(stat == null ? message : '${stat.name} +1 · $message'),
+        content: Text('+$coinsPerMission 코인 · $message'),
         action: offerSignIn
             ? SnackBarAction(label: 'Google 로그인', onPressed: _signIn)
             : null,
@@ -301,21 +361,179 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _showLevelUp(GrowthStat stat, int level) {
+  /// 새 방 문이 열리는 순간. 미리 알려 주지 않았으니 깜짝 선물처럼 보여 준다.
+  Future<void> _showNewRoom(SpaceEvent event) {
+    final room = spaceRoomById(event.roomId);
     return showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: Icon(stat.icon, color: stat.color, size: 40),
-        title: Text('${stat.name} 레벨 $level!'),
-        content: const Text('작은 행동이 쌓여서 한 단계 자랐어요.\n오늘의 나, 꽤 괜찮아요.',
-            textAlign: TextAlign.center),
+        title: const Text('문이 열렸어요!', textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 200,
+              child: RoomPicture(roomId: event.roomId, stage: 0, buddy: buddyById(_prefs.buddy)),
+            ),
+            const SizedBox(height: 12),
+            Text('${room?.name ?? '새 방'}이 생겼어요.\n천천히 채워 가요.', textAlign: TextAlign.center),
+          ],
+        ),
         actions: [
-          FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('좋아요')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('들어가 보기')),
         ],
       ),
     );
+  }
+
+  Future<void> _setHiveView(bool hive) async {
+    setState(() => _prefs = _copyPrefs(hiveView: hive));
+    await _space.setHiveView(hive);
+  }
+
+  /// 벌집 보기에서 방을 누르면 그 방을 고정하고 하나만 보기로 돌아간다.
+  Future<void> _pinRoom(String? roomId) async {
+    setState(() => _prefs = _copyPrefs(pinnedRoom: roomId, clearPinned: roomId == null, hiveView: false));
+    await _space.setPinnedRoom(roomId);
+    await _space.setHiveView(false);
+  }
+
+  SpacePrefs _copyPrefs({String? pinnedRoom, bool clearPinned = false, bool? hiveView, String? buddy}) {
+    final p = _prefs;
+    return SpacePrefs(
+      pinnedRoom: clearPinned ? null : (pinnedRoom ?? p.pinnedRoom),
+      hiveView: hiveView ?? p.hiveView,
+      buddy: buddy ?? p.buddy,
+      customMissions: p.customMissions,
+      rerolledOn: p.rerolledOn,
+      letters: p.letters,
+    );
+  }
+
+  Future<void> _chooseBuddy() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text('같이 지낼 친구', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            ),
+            for (final b in kBuddies)
+              ListTile(
+                leading: Image.asset(b.asset, width: 44, height: 46, filterQuality: FilterQuality.none),
+                title: Text(b.name),
+                trailing: b.id == _prefs.buddy ? const Icon(Icons.check, color: JdColors.solo) : null,
+                onTap: () => Navigator.of(ctx).pop(b.id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _prefs = _copyPrefs(buddy: picked));
+    await _space.setBuddy(picked);
+  }
+
+  Future<void> _reroll(DateTime today) async {
+    await _space.setRerolled(today);
+    await _loadPrefs();
+  }
+
+  Future<String?> _askText({required String title, required String hint, required int maxLength, int maxLines = 1}) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: maxLength,
+          maxLines: maxLines,
+          decoration: InputDecoration(hintText: hint),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(controller.text.trim()), child: const Text('저장')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addCustomMission() async {
+    final title = await _askText(
+        title: '내 미션 추가', hint: '예) 영양제 먹기', maxLength: customMissionTitleMax);
+    if (title == null || title.isEmpty || !mounted) return;
+    final list = [
+      ..._prefs.customMissions,
+      Mission.custom('$customMissionPrefix${DateTime.now().microsecondsSinceEpoch}', title),
+    ];
+    await _space.saveCustomMissions(list);
+    await _loadPrefs();
+  }
+
+  Future<void> _removeCustomMission(Mission mission) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('이 미션을 목록에서 뺄까요?'),
+        content: const Text('지금까지 남긴 기록은 그대로 있어요.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('빼기')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await _space.saveCustomMissions(_prefs.customMissions.where((m) => m.id != mission.id).toList());
+    await _loadPrefs();
+  }
+
+  Future<void> _writeLetter() async {
+    final text = await _askText(
+        title: '미래의 나에게', hint: '일주일 뒤의 나에게 하고 싶은 말', maxLength: 300, maxLines: 5);
+    if (text == null || text.isEmpty || !mounted) return;
+    final now = DateTime.now();
+    await _space.saveLetters([
+      ..._prefs.letters,
+      FutureLetter(id: 'letter-${now.microsecondsSinceEpoch}', text: text, writtenAt: now),
+    ]);
+    await _loadPrefs();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('일주일 뒤에 방 우편함으로 도착해요')),
+    );
+  }
+
+  Future<void> _openLetter(FutureLetter letter) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('일주일 전의 내가 보낸 편지'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${formatDateTime(letter.writtenAt)}에 썼어요',
+                  style: const TextStyle(fontSize: 12, color: JdColors.subtle)),
+              const SizedBox(height: 12),
+              Text(letter.text, style: const TextStyle(fontSize: 15, height: 1.5)),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('간직하기')),
+        ],
+      ),
+    );
+    await _space.saveLetters([
+      for (final l in _prefs.letters) l.id == letter.id ? l.open() : l,
+    ]);
+    await _loadPrefs();
   }
 
   /// 주간 날짜 칸을 누르면 그날이 골라진 기록 달력을 연다.
@@ -391,6 +609,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final todayRecords = byDay[today] ?? const <MissionRecord>[];
     final todayMissions = todayRecords.map((r) => r.missionId).toSet();
     final away = _loadFailed ? 0 : daysAway(_records, today);
+    final state = SpaceState.of(_records.length);
+    final shown = state.shownRoom(_prefs.pinnedRoom);
+    final buddy = buddyById(_prefs.buddy);
+    final rerolled = _prefs.rerolled(today);
+    final theme = discoveryThemeFor(today, rerolled: rerolled);
+    final letters = _prefs.letters.where((l) => !l.opened && l.arrived(now)).toList();
 
     return SafeArea(
       child: ListView(
@@ -413,20 +637,100 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.5)),
+              const Spacer(),
+              _CoinChip(coins: state.coins),
             ],
           ),
           const SizedBox(height: 14),
-          if (away >= 2)
-            _WelcomeBack(daysAway: away)
-          else
-            Text(
-              todayRecords.isEmpty
-                  ? '오늘은 하나만 해도 충분해요.'
-                  : '오늘도 나를 조금 키웠어요.',
-              style: const TextStyle(
-                  fontSize: 17, fontWeight: FontWeight.w700),
+          if (away >= 2) ...[
+            _WelcomeBack(daysAway: away),
+            const SizedBox(height: 12),
+          ],
+          _RoomCard(
+            state: state,
+            shownRoom: shown,
+            pinned: _prefs.pinnedRoom != null && state.isOpen(_prefs.pinnedRoom!),
+            hiveView: _prefs.hiveView,
+            buddy: buddy,
+            photo: _framePixels,
+            line: _reaction ?? buddyIdleLine(state, shown, doneToday: todayRecords.isNotEmpty),
+            change: _change,
+            letter: letters.isEmpty ? null : letters.first,
+            onToggleView: _setHiveView,
+            onPickRoom: _pinRoom,
+            onUnpin: () => _pinRoom(null),
+            onTapBuddy: _chooseBuddy,
+            onOpenLetter: _openLetter,
+          ),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              const Text('오늘의 미션',
+                  style:
+                      TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              Text('하나만 해도 충분해요',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: JdColors.subtle)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (final mission in widget.missionsFor(today))
+            if (mission.kind == MissionKind.discovery)
+              _MissionRow(
+                mission: mission,
+                completed: todayMissions.contains(mission.id),
+                subtitle: '주제: ${theme.title}',
+                onTap: () => _openMission(mission, theme: theme),
+                trailing: rerolled || todayMissions.contains(mission.id)
+                    ? null
+                    : TextButton(
+                        onPressed: () => _reroll(today),
+                        child: const Text('다른 걸로'),
+                      ),
+              )
+            else
+              _MissionRow(
+                mission: mission,
+                completed: todayMissions.contains(mission.id),
+                onTap: () => _openMission(mission),
+              ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              const Text('내 미션',
+                  style:
+                      TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              if (_prefs.customMissions.length < maxCustomMissions)
+                TextButton.icon(
+                  onPressed: _addCustomMission,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('내 미션 추가'),
+                ),
+            ],
+          ),
+          if (_prefs.customMissions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Text('매일 하고 싶은 걸 2개까지 넣어 둘 수 있어요.',
+                  style: TextStyle(fontSize: 13, color: JdColors.faint)),
             ),
-          const SizedBox(height: 16),
+          for (final mission in _prefs.customMissions)
+            _MissionRow(
+              mission: mission,
+              completed: todayMissions.contains(mission.id),
+              onTap: () => _openMission(mission),
+              trailing: IconButton(
+                tooltip: '내 미션 빼기',
+                icon: const Icon(Icons.close, size: 18),
+                color: JdColors.faint,
+                onPressed: () => _removeCustomMission(mission),
+              ),
+            ),
+          const Divider(height: 32),
           _WeekStrip(
             today: today,
             byDay: byDay,
@@ -437,31 +741,15 @@ class _HomeScreenState extends State<HomeScreen> {
             onOpenRecords: () => _selectTab(_recordsTab),
             onOpenDay: _openDay,
           ),
-          const Divider(height: 32),
-          Row(
-            children: [
-              const Text('오늘 할 미션',
-                  style:
-                      TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-              const Spacer(),
-              Text('하나 하면 능력치가 올라요',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: JdColors.subtle)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          for (final mission in kMissions)
-            _MissionRow(
-              mission: mission,
-              completed: todayMissions.contains(mission.id),
-              onTap: () => _openMission(mission),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _writeLetter,
+              icon: const Icon(Icons.mail_outline, size: 18),
+              label: const Text('미래의 나에게 편지 쓰기'),
             ),
-          if (!_loadFailed) ...[
-            const SizedBox(height: 22),
-            _GrowthCard(records: _records),
-          ],
+          ),
         ],
       ),
     );
@@ -550,7 +838,7 @@ class _WelcomeBack extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: JdColors.soloText)),
                 SizedBox(height: 4),
-                Text('쉬었던 날도 괜찮아요. 그동안 키운 능력치는 그대로예요.\n오늘은 제일 쉬운 거 하나만 해 볼까요?',
+                Text('쉬었던 날도 괜찮아요. 그동안 채운 방은 그대로예요.\n오늘은 제일 쉬운 거 하나만 해 볼까요?',
                     style: TextStyle(fontSize: 13, color: JdColors.subtle)),
               ],
             ),
@@ -561,97 +849,296 @@ class _WelcomeBack extends StatelessWidget {
   }
 }
 
-/// 내 능력치: 미션마다 키워 주는 능력이 있고, 쌓이기만 한다.
-class _GrowthCard extends StatelessWidget {
-  const _GrowthCard({required this.records});
+/// 미션을 하면 항상 받는 코인. 나중에 꾸미기에 쓴다.
+class _CoinChip extends StatelessWidget {
+  const _CoinChip({required this.coins});
 
-  final List<MissionRecord> records;
+  final int coins;
 
   @override
   Widget build(BuildContext context) {
-    final points = growthPoints(records);
-    final amounts = growthAmounts(points);
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-      decoration: BoxDecoration(
-        color: JdColors.panel,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: JdColors.panel, borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('내 능력치',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 2),
-          const Text('작은 행동도 나를 키워요. 쉬어도 줄어들지 않아요.',
-              style: TextStyle(fontSize: 12, color: JdColors.subtle)),
-          const SizedBox(height: 12),
-          for (final stat in kGrowthStats)
-            _StatBar(stat: stat, points: points[stat.missionId] ?? 0),
-          const SizedBox(height: 4),
-          Text(
-            amounts.isEmpty
-                ? '첫 미션을 하면 여기에 해낸 양이 쌓여요.'
-                : '지금까지 ${amounts.join(' · ')}',
-            style: const TextStyle(fontSize: 12, color: JdColors.subtle),
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8C252),
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFFC29A2E), width: 2),
+            ),
           ),
+          const SizedBox(width: 5),
+          Text('$coins', key: const Key('coins'), style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
         ],
       ),
     );
   }
 }
 
-class _StatBar extends StatelessWidget {
-  const _StatBar({required this.stat, required this.points});
+/// 홈 맨 위 내 공간 카드. 하나만 보기 / 벌집 보기를 오른쪽 위 아이콘으로 바꾼다.
+class _RoomCard extends StatelessWidget {
+  const _RoomCard({
+    required this.state,
+    required this.shownRoom,
+    required this.pinned,
+    required this.hiveView,
+    required this.buddy,
+    required this.photo,
+    required this.line,
+    required this.change,
+    required this.letter,
+    required this.onToggleView,
+    required this.onPickRoom,
+    required this.onUnpin,
+    required this.onTapBuddy,
+    required this.onOpenLetter,
+  });
 
-  final GrowthStat stat;
-  final int points;
+  static const _bg = Color(0xFF22344A);
+  static const _glass = Color(0x24FFFFFF);
+
+  final SpaceState state;
+  final String shownRoom;
+  final bool pinned;
+  final bool hiveView;
+  final Buddy buddy;
+  final List<int>? photo;
+  final String line;
+  final String? change;
+  final FutureLetter? letter;
+  final ValueChanged<bool> onToggleView;
+  final ValueChanged<String> onPickRoom;
+  final VoidCallback onUnpin;
+  final VoidCallback onTapBuddy;
+  final ValueChanged<FutureLetter> onOpenLetter;
 
   @override
   Widget build(BuildContext context) {
-    final lv = GrowthLevel.of(points);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
+    final room = spaceRoomById(shownRoom);
+    return Container(
+      decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
         children: [
-          Icon(stat.icon, size: 18, color: stat.color),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 48,
-            child: Text(stat.name,
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600)),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 48, 12, 12),
+            child: Column(
+              children: [
+                Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: hiveView ? 340 : 240),
+                    child: hiveView
+                        ? HivePicture(
+                            state: state,
+                            buddy: buddy,
+                            shownRoom: shownRoom,
+                            photo: photo,
+                            onTapRoom: onPickRoom,
+                          )
+                        : RoomPicture(
+                            roomId: shownRoom,
+                            stage: state.stageOf(shownRoom),
+                            buddy: buddy,
+                            photo: photo,
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Material(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: onTapBuddy,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+                      child: Row(
+                        children: [
+                          Image.asset(buddy.asset, width: 22, height: 23, filterQuality: FilterQuality.none),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(line, style: const TextStyle(fontSize: 13, color: JdColors.ink)),
+                                if (change != null)
+                                  Text(change!,
+                                      style: const TextStyle(
+                                          fontSize: 12, fontWeight: FontWeight.w700, color: JdColors.soloText)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          SizedBox(
-            width: 40,
-            child: Text('Lv.${lv.level}',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: stat.color)),
-          ),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: lv.progress,
-                minHeight: 8,
-                backgroundColor: Colors.white,
-                color: stat.color,
+          Positioned(
+            left: 12,
+            top: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: _glass, borderRadius: BorderRadius.circular(10)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(hiveView ? '내 공간' : (room?.name ?? ''),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                  if (!hiveView && pinned) ...[
+                    const SizedBox(width: 4),
+                    InkWell(
+                      onTap: onUnpin,
+                      child: const Tooltip(
+                        message: '고정 풀기',
+                        child: Icon(Icons.push_pin, size: 14, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 34,
-            child: Text('${lv.inLevel}/${lv.needed}',
-                textAlign: TextAlign.right,
-                style: const TextStyle(fontSize: 11, color: JdColors.faint)),
+          Positioned(
+            right: 10,
+            top: 10,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(color: _glass, borderRadius: BorderRadius.circular(10)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ViewButton(
+                    tooltip: '하나만 보기',
+                    selected: !hiveView,
+                    hive: false,
+                    onTap: () => onToggleView(false),
+                  ),
+                  const SizedBox(width: 2),
+                  _ViewButton(
+                    tooltip: '벌집 보기',
+                    selected: hiveView,
+                    hive: true,
+                    onTap: () => onToggleView(true),
+                  ),
+                ],
+              ),
+            ),
           ),
+          if (letter != null)
+            Positioned(
+              right: 12,
+              top: 50,
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => onOpenLetter(letter!),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.mail, size: 14, color: Color(0xFF9A4120)),
+                        SizedBox(width: 4),
+                        Text('편지가 왔어요',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9A4120))),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
+}
+
+class _ViewButton extends StatelessWidget {
+  const _ViewButton({required this.tooltip, required this.selected, required this.hive, required this.onTap});
+
+  final String tooltip;
+  final bool selected;
+  final bool hive;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 30,
+          height: 26,
+          decoration: BoxDecoration(
+            color: selected ? Colors.white.withValues(alpha: 0.92) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: CustomPaint(
+            painter: _HexIconPainter(hive: hive, color: selected ? JdColors.solo : const Color(0xFFE8EEF5)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 육각형 하나(하나만 보기) 또는 세 개(벌집 보기) 아이콘.
+class _HexIconPainter extends CustomPainter {
+  _HexIconPainter({required this.hive, required this.color});
+
+  final bool hive;
+  final Color color;
+
+  void _hex(Canvas canvas, Offset c, double r, Paint paint) {
+    final path = Path();
+    for (var i = 0; i < 6; i++) {
+      final a = (60.0 * i - 90) * 3.141592653589793 / 180;
+      final p = c + Offset(r * _cos(a), r * _sin(a));
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  static double _cos(double a) => math.cos(a);
+  static double _sin(double a) => math.sin(a);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = hive ? 1.4 : 1.8;
+    final c = size.center(Offset.zero);
+    if (!hive) {
+      _hex(canvas, c, 8, paint);
+      return;
+    }
+    const r = 4.6;
+    final w = r * 1.732;
+    _hex(canvas, c + Offset(-w / 2, -r * 0.75), r, paint);
+    _hex(canvas, c + Offset(w / 2, -r * 0.75), r, paint);
+    _hex(canvas, c + Offset(0, r * 0.75), r, paint);
+  }
+
+  @override
+  bool shouldRepaint(_HexIconPainter old) => old.hive != hive || old.color != color;
 }
 
 /// 같은 방 참가자 동그라미 줄. 방이 없으면 나와 초대 버튼만 보인다.
@@ -825,7 +1312,7 @@ class _WeekStrip extends StatelessWidget {
           const SizedBox(height: 6),
           DayBlob(
             count: missions,
-            full: missions >= kMissions.length,
+            full: missions >= kDailyMissionCount,
             today: isToday,
             future: future,
           ),
@@ -843,11 +1330,21 @@ class _WeekStrip extends StatelessWidget {
 
 class _MissionRow extends StatelessWidget {
   const _MissionRow(
-      {required this.mission, required this.completed, required this.onTap});
+      {required this.mission,
+      required this.completed,
+      required this.onTap,
+      this.subtitle,
+      this.trailing});
 
   final Mission mission;
   final bool completed;
   final VoidCallback onTap;
+
+  /// 제목 아래 한 줄 (예: 오늘의 발견 주제).
+  final String? subtitle;
+
+  /// 오른쪽 끝 버튼. 없으면 타이머 시간을 보여 준다.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -870,11 +1367,16 @@ class _MissionRow extends StatelessWidget {
                           color: completed ? JdColors.faint : JdColors.ink)),
                   if (completed)
                     const Text('오늘 완료했어요 · 다시 해도 좋아요',
-                        style: TextStyle(fontSize: 12, color: JdColors.faint)),
+                        style: TextStyle(fontSize: 12, color: JdColors.faint))
+                  else if (subtitle != null)
+                    Text(subtitle!,
+                        style: const TextStyle(fontSize: 12, color: JdColors.subtle)),
                 ],
               ),
             ),
-            if (mission.timerMinutes != null)
+            if (trailing != null)
+              trailing!
+            else if (mission.timerMinutes != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(

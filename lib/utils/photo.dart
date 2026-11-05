@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -36,4 +37,46 @@ Uint8List prepareCheckinPhoto(Uint8List original) {
     if (jpeg.length <= maxOutputBytes) return jpeg;
   }
   throw PhotoException('사진을 1MB 이하로 줄이지 못했어요. 다른 사진을 골라 주세요.');
+}
+
+/// 나만 보는 추억 사진: 긴 변 [keepsakeLongSide]px JPEG를 base64로. EXIF는 남기지 않는다.
+const keepsakeLongSide = 360;
+
+String makeKeepsakePhoto(Uint8List original) {
+  if (original.length > maxInputBytes) {
+    throw PhotoException('10MB 이하 사진만 남길 수 있어요.');
+  }
+  final decoded = img.decodeImage(original);
+  if (decoded == null) {
+    throw PhotoException('JPEG·PNG·WebP 사진만 남길 수 있어요.');
+  }
+  var image = img.bakeOrientation(decoded);
+  final longSide = image.width > image.height ? image.width : image.height;
+  if (longSide > keepsakeLongSide) {
+    image = image.width >= image.height
+        ? img.copyResize(image, width: keepsakeLongSide)
+        : img.copyResize(image, height: keepsakeLongSide);
+  }
+  image.exif = img.ExifData();
+  return base64Encode(img.encodeJpg(image, quality: 70));
+}
+
+/// 방 벽 액자에 걸 도트 사진: 가운데를 정사각형으로 잘라 [size]×[size] 칸 색(0xAARRGGBB)으로.
+/// 읽을 수 없으면 null.
+List<int>? photoPixels(String base64Photo, {int size = 8}) {
+  try {
+    final decoded = img.decodeImage(base64Decode(base64Photo));
+    if (decoded == null) return null;
+    final small = img.copyResizeCropSquare(decoded, size: size, interpolation: img.Interpolation.average);
+    final out = <int>[];
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
+        final p = small.getPixel(x, y);
+        out.add(0xFF000000 | ((p.r.toInt() & 0xFF) << 16) | ((p.g.toInt() & 0xFF) << 8) | (p.b.toInt() & 0xFF));
+      }
+    }
+    return out;
+  } catch (_) {
+    return null;
+  }
 }
