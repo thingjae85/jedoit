@@ -54,6 +54,9 @@ class _DecorScreenState extends State<DecorScreen> {
   late Buddy _buddy = widget.buddy;
   String? _selected;
   _Drag? _drag;
+
+  /// 0 벽지·바닥, 1 벽 장식, 2 가구, 3 캐릭터
+  int _tab = 0;
   final _roomKey = GlobalKey();
 
   static const _buddyKey = RoomPicture.buddyKey;
@@ -116,10 +119,25 @@ class _DecorScreenState extends State<DecorScreen> {
     }
     _snack(
       _decor.roomOf(item.id) == widget.roomId
-          ? '${item.name}을(를) 놓았어요. 끌어서 옮겨 보세요'
-          : '${item.name}을(를) 보관함에 넣었어요',
+          ? '${item.name}${objectParticle(item.name)} 놓았어요. 끌어서 옮겨 보세요'
+          : '${item.name}${objectParticle(item.name)} 보관함에 넣었어요',
       duration: const Duration(seconds: 3),
     );
+  }
+
+  Future<void> _surface(SurfaceItem item) async {
+    var next = _decor.buySurface(item, widget.state.coins);
+    if (!next.hasSurface(item)) return;
+    next = next.applySurface(widget.roomId, item);
+    await _update(next);
+    final o = objectParticle(item.name);
+    _snack(item.kind == SurfaceKind.wall ? '${item.name}$o 발랐어요' : '${item.name}$o 깔았어요');
+  }
+
+  Future<void> _rename() async {
+    final name = await showRoomNameDialog(context, current: _decor.roomName(widget.roomId), max: roomNameMax);
+    if (name == null || !mounted) return;
+    await _update(_decor.rename(widget.roomId, name));
   }
 
   Future<void> _pickBuddy(Buddy b) async {
@@ -247,7 +265,6 @@ class _DecorScreenState extends State<DecorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final room = spaceRoomById(widget.roomId);
     var things = _things;
     final drag = _drag;
     var valid = true;
@@ -260,61 +277,57 @@ class _DecorScreenState extends State<DecorScreen> {
         things = [for (final t in things) t.key == drag.key ? t.at(drag.at.$1, drag.at.$2) : t];
       }
     }
-    final stored = [
+    final storedThings = [
       for (final f in storedFurniture(widget.roomId, _stage, _decor))
         thingsIn(widget.roomId, _stage, _decor.moveFurniture(widget.roomId, f.id, f.x, f.y))
             .firstWhere((t) => t.key == furnitureKey(f.id)),
       for (final id in _decor.owned)
-        if (_decor.roomOf(id) == null) decorThing(id, 0, 0),
+        if (decorById(id) != null && _decor.roomOf(id) == null) decorThing(id, 0, 0),
     ].whereType<PlacedThing>().toList();
 
     final bg = widget.night ? JdColors.roomNavyDeep : JdColors.roomNavy;
-    final shop = [for (final item in kDecorItems) if (!_decor.owned.contains(item.id)) item];
+    final roomW = math.min(340.0, MediaQuery.sizeOf(context).height * 0.30);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('꾸미기 · ${room?.name ?? ''}'),
+        title: const Text('꾸미기'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: PixelPanel(
-              color: JdColors.paperDeep,
-              border: JdColors.seam,
-              step: 2,
-              padding: const EdgeInsets.fromLTRB(9, 6, 11, 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const PixelCoin(size: 14),
-                  const SizedBox(width: 6),
-                  Text('코인 $_coins',
-                      key: const Key('decorCoins'),
-                      style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: JdColors.woodText,
-                          fontFeatures: [FontFeature.tabularFigures()])),
-                ],
-              ),
-            ),
+            child: CoinCounter(coins: _coins, textKey: const Key('decorCoins'), prefix: '코인 '),
           ),
         ],
       ),
       body: Column(
         children: [
           // 방 + 아래 작업대 (고른 것 이름, 보관함에 넣기)
-          Container(
-            margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            clipBehavior: Clip.antiAlias,
-            decoration: ShapeDecoration(color: bg, shape: const PixelBorder(step: 4, steps: 2)),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                  child: Center(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+            child: GamePanel(
+              color: bg,
+              lip: JdColors.roomNavyDeep,
+              step: 4,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: RoomNameButton(
+                            name: _decor.roomName(widget.roomId),
+                            onDark: true,
+                            size: 14,
+                            onTap: _rename,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Center(
                     child: ConstrainedBox(
                       // 화면이 낮으면 방을 조금 줄여서 아래 목록이 보이게 한다.
-                      constraints: BoxConstraints(maxWidth: math.min(340, MediaQuery.sizeOf(context).height * 0.38)),
+                      constraints: BoxConstraints(maxWidth: roomW),
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         // 손가락을 댄 곳에서 바로 집는다 (조금 움직인 뒤가 아니라).
@@ -341,73 +354,51 @@ class _DecorScreenState extends State<DecorScreen> {
                       ),
                     ),
                   ),
-                ),
-                _selectionBar(),
-              ],
+                  _selectionBar(),
+                ],
+              ),
             ),
           ),
+          const SizedBox(height: 10),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
-              children: [
-                const SectionTitle(title: '캐릭터', note: '방에서 끌어서 자리를 옮길 수 있어요'),
-                Row(
-                  children: [
-                    for (final b in kBuddies) ...[
-                      _BuddyTile(buddy: b, selected: b.id == _buddy.id, onTap: () => _pickBuddy(b)),
-                      const SizedBox(width: 10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  GameTabs(
+                    selected: _tab,
+                    onSelect: (i) => setState(() => _tab = i),
+                    tabs: [
+                      ('벽지·바닥', TabGlyphs.surface()),
+                      ('벽 장식', TabGlyphs.wall()),
+                      ('가구', TabGlyphs.furniture()),
+                      ('캐릭터', TabGlyphs.buddy()),
                     ],
-                  ],
-                ),
-                if (stored.isNotEmpty) ...[
-                  const SizedBox(height: 22),
-                  SectionTitle(title: '보관함', note: '${stored.length}개'),
-                  _grid([
-                    for (final t in stored)
-                      _ItemCard(
-                        key: ValueKey('stored-${t.key}'),
-                        sprite: t.day,
-                        name: t.name,
-                        meta: Text(t.isDecor && !_canPlace ? '방이 조금 더 회복되면 놓을 수 있어요' : '보관함에 있어요',
-                            maxLines: 2, style: const TextStyle(fontSize: 11, color: JdColors.faint)),
-                        action: '놓기',
-                        onPressed: t.isDecor && !_canPlace ? null : () => _takeOut(t),
-                      ),
-                  ]),
-                ],
-                const SizedBox(height: 22),
-                const SectionTitle(title: '상점', note: '하나씩만 살 수 있어요'),
-                if (shop.isEmpty)
-                  const PixelPanel(
-                    padding: EdgeInsets.all(16),
-                    child: Text('소품을 다 모았어요!', style: TextStyle(color: JdColors.subtle)),
-                  )
-                else
-                  _grid([
-                    for (final item in shop)
-                      _ItemCard(
-                        key: ValueKey('shop-${item.id}'),
-                        sprite: kDecorArt[item.id]?.$4,
-                        name: item.name,
-                        meta: Row(
-                          children: [
-                            const PixelCoin(size: 11),
-                            const SizedBox(width: 4),
-                            Text('${item.price}',
-                                style: const TextStyle(
-                                    fontSize: 12, fontWeight: FontWeight.w800, color: JdColors.woodText)),
-                            Text(' · ${item.spot == DecorSpot.wall ? '벽' : '바닥'}',
-                                style: const TextStyle(fontSize: 12, color: JdColors.faint)),
-                          ],
+                  ),
+                  Expanded(
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: JdColors.cream,
+                        border: Border(
+                          left: BorderSide(color: JdColors.outline, width: 2),
+                          right: BorderSide(color: JdColors.outline, width: 2),
+                          top: BorderSide(color: JdColors.outline, width: 2),
                         ),
-                        action: '사기',
-                        onPressed: _coins >= item.price ? () => _buy(item) : null,
                       ),
-                  ]),
-                const SizedBox(height: 18),
-                const Text('코인은 미션을 하면 10개씩 생겨요. 방이 자라는 건 코인과 상관없어요.',
-                    textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: JdColors.faint)),
-              ],
+                      child: ListView(
+                        key: ValueKey('decorTab$_tab'),
+                        padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
+                        children: switch (_tab) {
+                          0 => _surfaceTab(),
+                          1 => _thingTab(storedThings.where((t) => t.wall).toList(), DecorSpot.wall),
+                          2 => _thingTab(storedThings.where((t) => !t.wall).toList(), DecorSpot.floor),
+                          _ => _buddyTab(),
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -415,10 +406,142 @@ class _DecorScreenState extends State<DecorScreen> {
     );
   }
 
+  /// 판 안의 작은 제목.
+  Widget _label(String text, {String? note}) => Padding(
+        padding: const EdgeInsets.only(left: 2, bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(text, style: gameText(size: 14, color: JdColors.woodText)),
+            if (note != null) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(note,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+              ),
+            ],
+          ],
+        ),
+      );
+
+  List<Widget> _surfaceTab() {
+    final layout = _decor.layoutOf(widget.roomId);
+    final art = kRoomArt[widget.roomId]!;
+    final dark = widget.night || _stage < art.litFrom;
+    Widget card(SurfaceItem item, String current) {
+      final owned = _decor.hasSurface(item);
+      final using = item.key == current;
+      final pics = art.surfaces[item.key];
+      return _ItemCard(
+        key: ValueKey('surface-${item.key}'),
+        picture: pics == null
+            ? null
+            : Image.asset(dark ? pics.$2 : pics.$1,
+                filterQuality: FilterQuality.none,
+                fit: BoxFit.cover,
+                alignment: item.kind == SurfaceKind.wall ? const Alignment(0, -0.55) : const Alignment(0, 0.8)),
+        pictureBleed: true,
+        name: item.name,
+        price: owned ? null : item.price,
+        note: owned ? (using ? '지금 쓰는 중' : '가지고 있어요') : null,
+        action: using ? '쓰는 중' : (owned ? (item.kind == SurfaceKind.wall ? '바르기' : '깔기') : '사기'),
+        green: !owned,
+        onPressed: using || (!owned && _coins < item.price) ? null : () => _surface(item),
+      );
+    }
+
+    return [
+      _label('벽지', note: '방 벽 전체에 발라요'),
+      _grid([for (final w in kWallpapers) card(w, layout.wallKey)]),
+      const SizedBox(height: 18),
+      _label('바닥', note: '가구 밑 바닥까지 바뀌어요'),
+      _grid([for (final f in kFloors) card(f, layout.floorKey)]),
+      ..._footer(),
+    ];
+  }
+
+  List<Widget> _thingTab(List<PlacedThing> stored, DecorSpot spot) {
+    final shop = [
+      for (final item in kDecorItems)
+        if (item.spot == spot && !_decor.owned.contains(item.id)) item
+    ];
+    return [
+      if (stored.isNotEmpty) ...[
+        _label('보관함', note: '${stored.length}개 · 놓으면 빈 자리에 놓여요'),
+        _grid([
+          for (final t in stored)
+            _ItemCard(
+              key: ValueKey('stored-${t.key}'),
+              picture: Image.asset(t.day.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+              name: t.name,
+              note: t.isDecor && !_canPlace ? '방이 조금 더 회복되면 놓을 수 있어요' : '보관함에 있어요',
+              action: '놓기',
+              onPressed: t.isDecor && !_canPlace ? null : () => _takeOut(t),
+            ),
+        ]),
+        const SizedBox(height: 18),
+      ],
+      _label('상점', note: '하나씩만 살 수 있어요'),
+      if (shop.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text('여기 있는 건 다 모았어요!', style: TextStyle(color: JdColors.subtle)),
+        )
+      else
+        _grid([
+          for (final item in shop)
+            _ItemCard(
+              key: ValueKey('shop-${item.id}'),
+              picture: kDecorArt[item.id] == null
+                  ? null
+                  : Image.asset(kDecorArt[item.id]!.$4.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+              name: item.name,
+              price: item.price,
+              action: '사기',
+              green: true,
+              onPressed: _coins >= item.price ? () => _buy(item) : null,
+            ),
+        ]),
+      if (spot == DecorSpot.floor && stored.isEmpty)
+        const Padding(
+          padding: EdgeInsets.only(top: 14),
+          child: Text('방에 있는 가구는 방에서 눌러 고른 뒤 보관함에 넣을 수 있어요.',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: JdColors.faint)),
+        ),
+      ..._footer(),
+    ];
+  }
+
+  List<Widget> _buddyTab() => [
+        _label('캐릭터', note: '방에서 끌어서 자리를 옮길 수 있어요'),
+        _grid([
+          for (final b in kBuddies)
+            _ItemCard(
+              key: ValueKey('buddy-${b.id}'),
+              picture: Image.asset(b.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+              name: b.name,
+              note: b.id == _buddy.id ? '지금 함께 있어요' : null,
+              action: b.id == _buddy.id ? '함께하는 중' : '함께하기',
+              onPressed: b.id == _buddy.id ? null : () => _pickBuddy(b),
+            ),
+        ]),
+      ];
+
+  List<Widget> _footer() => [
+        const SizedBox(height: 18),
+        Text(
+          shopIsFree ? '지금은 시험 기간이라 상점이 모두 0코인이에요.' : '코인은 미션을 하면 10개씩 생겨요. 방이 자라는 건 코인과 상관없어요.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12, color: JdColors.faint),
+        ),
+      ];
+
   /// 카드를 두 줄(넓으면 세 줄)로 늘어놓는다.
   Widget _grid(List<Widget> cards) => LayoutBuilder(builder: (context, c) {
         const gap = 10.0;
-        final cols = c.maxWidth >= 520 ? 3 : 2;
+        final cols = c.maxWidth >= 500 ? 3 : 2;
         final w = (c.maxWidth - gap * (cols - 1)) / cols;
         return Wrap(
           spacing: gap,
@@ -433,52 +556,37 @@ class _DecorScreenState extends State<DecorScreen> {
     final t = _thing(key);
     final picked = key != null && (t != null || key == _buddyKey);
     return Container(
-      height: 48,
-      margin: const EdgeInsets.only(top: 6),
-      padding: const EdgeInsets.fromLTRB(14, 0, 8, 0),
-      color: Colors.black.withValues(alpha: 0.18),
+      height: 46,
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
+      color: Colors.black.withValues(alpha: 0.22),
       child: Row(
         children: [
           if (!picked)
             const Expanded(
-              child: Row(
-                children: [
-                  Icon(Icons.pan_tool_alt_outlined, size: 16, color: Color(0xFFB9C6D6)),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text('가구·소품·캐릭터를 손가락으로 집어서 끌어다 놓아 보세요.',
-                        maxLines: 2, style: TextStyle(fontSize: 12, height: 1.3, color: Color(0xFFD5DEE8))),
-                  ),
-                ],
-              ),
+              child: Text('가구·소품·캐릭터를 손가락으로 집어서 끌어다 놓아 보세요.',
+                  maxLines: 2, style: TextStyle(fontSize: 12, height: 1.3, color: Color(0xFFD5DEE8))),
             )
           else ...[
-            if (t != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: Image.asset(t.day.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
-                ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Image.asset(_buddy.asset, width: 22, height: 23, filterQuality: FilterQuality.none),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: Image.asset(t?.day.asset ?? _buddy.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
               ),
+            ),
             Expanded(
               child: Text(t?.name ?? _buddy.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: gameText(size: 14, color: Colors.white)),
             ),
             if (t != null)
-              TextButton.icon(
-                style: TextButton.styleFrom(foregroundColor: JdColors.woodLight),
-                onPressed: () => _store(t),
-                icon: const Icon(Icons.inventory_2_outlined, size: 16),
-                label: const Text('보관함에'),
+              GameButton(
+                small: true,
+                label: '보관함에',
+                color: JdColors.cream,
+                lip: JdColors.creamLip,
+                onTap: () => _store(t),
               ),
           ],
         ],
@@ -487,115 +595,83 @@ class _DecorScreenState extends State<DecorScreen> {
   }
 }
 
-/// 캐릭터 고르기 칸.
-class _BuddyTile extends StatelessWidget {
-  const _BuddyTile({required this.buddy, required this.selected, required this.onTap});
-
-  final Buddy buddy;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final shape = PixelBorder(
-      step: 3,
-      steps: 2,
-      side: BorderSide(color: selected ? JdColors.ink : JdColors.seam, width: selected ? 2 : 1.5),
-    );
-    return Material(
-      color: selected ? JdColors.cream : JdColors.paperDeep,
-      shape: shape,
-      child: InkWell(
-        customBorder: shape,
-        onTap: onTap,
-        child: SizedBox(
-          width: 88,
-          height: 92,
-          child: Stack(
-            children: [
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset(buddy.asset, width: 44, height: 46, filterQuality: FilterQuality.none),
-                    const SizedBox(height: 6),
-                    Text(buddy.name,
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                            color: JdColors.ink)),
-                  ],
-                ),
-              ),
-              if (selected)
-                const Positioned(
-                  right: 6,
-                  top: 6,
-                  child: PixelCheck(checked: true, size: 16),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 상점·보관함 카드: 방에 놓았을 때 그림을 크게 보여 주고, 아래에 이름과 버튼.
+/// 상점·보관함·캐릭터 카드: 위에 그림 칸, 아래에 이름·값·버튼.
 class _ItemCard extends StatelessWidget {
   const _ItemCard({
     super.key,
-    required this.sprite,
+    required this.picture,
     required this.name,
-    required this.meta,
     required this.action,
     required this.onPressed,
+    this.price,
+    this.note,
+    this.green = false,
+    this.pictureBleed = false,
   });
 
-  final Sprite? sprite;
+  final Widget? picture;
   final String name;
-  final Widget meta;
   final String action;
   final VoidCallback? onPressed;
 
+  /// 값. 없으면 [note]를 보여 준다.
+  final int? price;
+  final String? note;
+
+  /// 사기 버튼처럼 초록.
+  final bool green;
+
+  /// 벽지·바닥 그림처럼 칸을 꽉 채울지.
+  final bool pictureBleed;
+
   @override
   Widget build(BuildContext context) {
-    return PixelPanel(
-      padding: const EdgeInsets.all(8),
+    final (face, lip, text) = green ? GameButton.green : GameButton.wood;
+    return GamePanel(
+      color: JdColors.paper,
+      lip: JdColors.seamDark,
+      depth: 3,
+      padding: const EdgeInsets.all(7),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            height: 76,
-            padding: const EdgeInsets.all(10),
-            decoration: const ShapeDecoration(color: JdColors.woodLight, shape: PixelBorder(step: 2, steps: 1)),
-            child: sprite == null
-                ? const Icon(Icons.category_outlined, color: JdColors.woodText)
-                : Image.asset(sprite!.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: Text(name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: JdColors.ink)),
-          ),
-          const SizedBox(height: 2),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: meta),
-          const SizedBox(height: 8),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 36),
-              backgroundColor: JdColors.ink,
-              foregroundColor: JdColors.cream,
-              disabledBackgroundColor: JdColors.seam,
-              disabledForegroundColor: JdColors.faint,
-              shape: const PixelBorder(step: 2, steps: 1),
-              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+            height: 72,
+            padding: pictureBleed ? EdgeInsets.zero : const EdgeInsets.all(9),
+            clipBehavior: Clip.antiAlias,
+            decoration: const ShapeDecoration(
+              color: JdColors.woodLight,
+              shape: PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.wood, width: 1.5)),
             ),
-            onPressed: onPressed,
-            child: Text(action),
+            child: picture ?? const SizedBox(),
+          ),
+          const SizedBox(height: 7),
+          Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: gameText(size: 13)),
+          const SizedBox(height: 3),
+          SizedBox(
+            height: 16,
+            child: price != null
+                ? Row(
+                    children: [
+                      const PixelCoin(size: 12),
+                      const SizedBox(width: 4),
+                      Text('$price', style: gameText(size: 12, color: JdColors.woodText)),
+                    ],
+                  )
+                : Text(note ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: JdColors.faint)),
+          ),
+          const SizedBox(height: 6),
+          GameButton(
+            label: action,
+            expand: true,
+            small: true,
+            color: face,
+            lip: lip,
+            textColor: text,
+            onTap: onPressed,
           ),
         ],
       ),

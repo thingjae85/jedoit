@@ -28,3 +28,10 @@ flutter:
     - assets/space/
     - assets/space/furniture/
     - assets/space/decor/
+    - assets/space/surface/
+  fonts:
+    # 갈무리11 굵게 (SIL OFL 1.1, assets/fonts/Galmuri-OFL.md). 자주 쓰는 한글 2350자만 남겼다.
+    - family: Galmuri
+      fonts:
+        - asset: assets/fonts/Galmuri11-Bold.ttf
+          weight: 700

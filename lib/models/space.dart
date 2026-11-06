@@ -6,6 +6,8 @@ class SpaceRoomDef {
   const SpaceRoomDef({required this.id, required this.name, required this.lines});
 
   final String id;
+
+  /// 처음 이름. 사용자가 바꾼 이름은 [DecorData.roomName].
   final String name;
 
   /// 단계에 올라섰을 때 보여 줄 한 줄. lines[0]은 방이 처음 열릴 때.
@@ -15,7 +17,7 @@ class SpaceRoomDef {
 }
 
 const List<SpaceRoomDef> kSpaceRooms = [
-  SpaceRoomDef(id: 'bedroom', name: '작은 침실', lines: [
+  SpaceRoomDef(id: 'bedroom', name: '방1', lines: [
     '',
     '창문으로 햇빛이 들어와요',
     '상자를 풀고 침대를 놓았어요',
@@ -28,7 +30,7 @@ const List<SpaceRoomDef> kSpaceRooms = [
     '서랍장이 생겼어요',
     '운동 매트를 깔았어요',
   ]),
-  SpaceRoomDef(id: 'study', name: '책 읽는 방', lines: [
+  SpaceRoomDef(id: 'study', name: '방2', lines: [
     '문이 열렸어요! 새 방이 생겼어요',
     '책장이 들어왔어요',
     '바닥에 러그를 깔았어요',
@@ -133,4 +135,19 @@ class SpaceState {
   /// 하나만 보기에서 보여 줄 방: 눌러 둔 방이 있으면 그 방, 없으면 가장 최근에 바뀐 방.
   String shownRoom(String? pinned) =>
       pinned != null && isOpen(pinned) ? pinned : latestRoom;
+}
+
+/// 이름 뒤에 붙일 '이'/'가'. 받침이 있으면 '이'. 숫자는 읽는 소리로 본다 (방1 → 이, 방2 → 가).
+String subjectParticle(String word) {
+  if (word.isEmpty) return '이';
+  final c = word.codeUnitAt(word.length - 1);
+  if (c >= 0xAC00 && c <= 0xD7A3) return (c - 0xAC00) % 28 == 0 ? '가' : '이';
+  if (c >= 0x30 && c <= 0x39) return '013678'.contains(word[word.length - 1]) ? '이' : '가';
+  return '이(가)';
+}
+
+/// 이름 뒤에 붙일 '을'/'를'.
+String objectParticle(String word) {
+  final p = subjectParticle(word);
+  return p == '이' ? '을' : (p == '가' ? '를' : '을(를)');
 }

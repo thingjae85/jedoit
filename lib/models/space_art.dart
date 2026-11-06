@@ -86,11 +86,13 @@ class RoomArt {
     required this.buddyY,
     required this.frameX,
     required this.frameZ,
+    required this.litFrom,
+    required this.surfaces,
   });
 
   final int stages;
 
-  /// 단계별 껍데기(바닥·벽·창문) 그림 (낮, 밤).
+  /// 단계별 껍데기(창문·벽에 붙은 것) 그림 (낮, 밤). 바닥과 벽 자리는 비어 있고 [surfaces]가 채운다.
   final List<(String, String)> shells;
 
   final List<FurnitureArt> furniture;
@@ -103,6 +105,12 @@ class RoomArt {
   /// 오른쪽 뒷벽 사진 액자의 시작 칸.
   final int frameX;
   final int frameZ;
+
+  /// 이 단계부터 낮 그림이 밝다. 그 전에는 낮에도 어두운 방이라 밤 벽지·바닥을 쓴다.
+  final int litFrom;
+
+  /// 벽지·바닥 그림: 'wall_basic', 'floor_oak' 같은 id → (낮, 밤).
+  final Map<String, (String, String)> surfaces;
 }
 
 const Map<String, RoomArt> kRoomArt = {
@@ -143,6 +151,21 @@ const Map<String, RoomArt> kRoomArt = {
     buddyY: 25,
     frameX: 2,
     frameZ: 24,
+    litFrom: 1,
+    surfaces: {
+      'wall_basic': ('assets/space/surface/bedroom_wall_basic.png', 'assets/space/surface/bedroom_wall_basic_n.png'),
+      'wall_cream': ('assets/space/surface/bedroom_wall_cream.png', 'assets/space/surface/bedroom_wall_cream_n.png'),
+      'wall_mint': ('assets/space/surface/bedroom_wall_mint.png', 'assets/space/surface/bedroom_wall_mint_n.png'),
+      'wall_sky': ('assets/space/surface/bedroom_wall_sky.png', 'assets/space/surface/bedroom_wall_sky_n.png'),
+      'wall_rose': ('assets/space/surface/bedroom_wall_rose.png', 'assets/space/surface/bedroom_wall_rose_n.png'),
+      'wall_brick': ('assets/space/surface/bedroom_wall_brick.png', 'assets/space/surface/bedroom_wall_brick_n.png'),
+      'floor_basic': ('assets/space/surface/bedroom_floor_basic.png', 'assets/space/surface/bedroom_floor_basic_n.png'),
+      'floor_oak': ('assets/space/surface/bedroom_floor_oak.png', 'assets/space/surface/bedroom_floor_oak_n.png'),
+      'floor_walnut': ('assets/space/surface/bedroom_floor_walnut.png', 'assets/space/surface/bedroom_floor_walnut_n.png'),
+      'floor_tile': ('assets/space/surface/bedroom_floor_tile.png', 'assets/space/surface/bedroom_floor_tile_n.png'),
+      'floor_green': ('assets/space/surface/bedroom_floor_green.png', 'assets/space/surface/bedroom_floor_green_n.png'),
+      'floor_pink': ('assets/space/surface/bedroom_floor_pink.png', 'assets/space/surface/bedroom_floor_pink_n.png'),
+    },
   ),
   'study': RoomArt(
     stages: 7,
@@ -169,6 +192,21 @@ const Map<String, RoomArt> kRoomArt = {
     buddyY: 26,
     frameX: 13,
     frameZ: 26,
+    litFrom: 0,
+    surfaces: {
+      'wall_basic': ('assets/space/surface/study_wall_basic.png', 'assets/space/surface/study_wall_basic_n.png'),
+      'wall_cream': ('assets/space/surface/study_wall_cream.png', 'assets/space/surface/study_wall_cream_n.png'),
+      'wall_mint': ('assets/space/surface/study_wall_mint.png', 'assets/space/surface/study_wall_mint_n.png'),
+      'wall_sky': ('assets/space/surface/study_wall_sky.png', 'assets/space/surface/study_wall_sky_n.png'),
+      'wall_rose': ('assets/space/surface/study_wall_rose.png', 'assets/space/surface/study_wall_rose_n.png'),
+      'wall_brick': ('assets/space/surface/study_wall_brick.png', 'assets/space/surface/study_wall_brick_n.png'),
+      'floor_basic': ('assets/space/surface/study_floor_basic.png', 'assets/space/surface/study_floor_basic_n.png'),
+      'floor_oak': ('assets/space/surface/study_floor_oak.png', 'assets/space/surface/study_floor_oak_n.png'),
+      'floor_walnut': ('assets/space/surface/study_floor_walnut.png', 'assets/space/surface/study_floor_walnut_n.png'),
+      'floor_tile': ('assets/space/surface/study_floor_tile.png', 'assets/space/surface/study_floor_tile_n.png'),
+      'floor_green': ('assets/space/surface/study_floor_green.png', 'assets/space/surface/study_floor_green_n.png'),
+      'floor_pink': ('assets/space/surface/study_floor_pink.png', 'assets/space/surface/study_floor_pink_n.png'),
+    },
   ),
 };
 
@@ -182,3 +220,19 @@ const Map<String, (bool, int, int, Sprite, Sprite)> kDecorArt = {
   'cactus': (false, 3, 3, Sprite('assets/space/decor/cactus.png', 82, 120, 12, 25), Sprite('assets/space/decor/cactus_n.png', 82, 120, 12, 25)),
   'books': (false, 5, 3, Sprite('assets/space/decor/books.png', 82, 133, 16, 14), Sprite('assets/space/decor/books_n.png', 82, 133, 16, 14)),
 };
+
+/// 고를 수 있는 벽지와 바닥 (id, 이름). 기본(basic)은 방마다 처음 모습이다.
+const List<(String, String)> kWallpaperArt = [
+  ('cream', '크림 벽지'),
+  ('mint', '민트 줄무늬'),
+  ('sky', '하늘 물방울'),
+  ('rose', '분홍 체크'),
+  ('brick', '벽돌'),
+];
+const List<(String, String)> kFloorArt = [
+  ('oak', '밝은 원목'),
+  ('walnut', '짙은 원목'),
+  ('tile', '체크 타일'),
+  ('green', '초록 카펫'),
+  ('pink', '분홍 카펫'),
+];

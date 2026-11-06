@@ -6,7 +6,7 @@ import '../models/layout.dart';
 import '../models/space.dart';
 import '../models/space_art.dart';
 
-/// 방 하나. 껍데기(바닥·벽·창문) 위에 벽 소품과 액자, 그다음 가구·소품·캐릭터를
+/// 방 하나. 바닥·벽지 위에 껍데기(창문 등), 그 위에 벽 소품과 액자, 그다음 가구·소품·캐릭터를
 /// 바닥 칸 위치로 계산한 앞뒤 순서대로 얹는다.
 class RoomPicture extends StatelessWidget {
   const RoomPicture({
@@ -80,6 +80,11 @@ class RoomPicture extends StatelessWidget {
     if (selectedKey == buddyKey && showBuddy) selected = _Footprint(false, bx - 1, by - 1, 3, 2);
     const lift = 3; // 들어 올린 높이 (도트 픽셀)
     final shell = art.shells[st];
+    // 상자만 있는 첫 단계는 낮에도 어두운 방이다.
+    final dark = night || st < art.litFrom;
+    final layout = decor.layoutOf(roomId);
+    final wallArt = art.surfaces[layout.wallKey] ?? art.surfaces['wall_basic']!;
+    final floorArt = art.surfaces[layout.floorKey] ?? art.surfaces['floor_basic']!;
     return AspectRatio(
       aspectRatio: kRoomArtWidth / kRoomArtHeight,
       child: LayoutBuilder(builder: (context, c) {
@@ -98,8 +103,14 @@ class RoomPicture extends StatelessWidget {
           );
         }
 
+        Widget layer(String asset) => Positioned.fill(
+              child: Image.asset(asset, filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),
+            );
+
         return Stack(
           children: [
+            layer(dark ? floorArt.$2 : floorArt.$1),
+            layer(dark ? wallArt.$2 : wallArt.$1),
             Positioned.fill(
               child: Image.asset(night ? shell.$2 : shell.$1,
                   filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),

@@ -148,7 +148,7 @@ void main() {
       expect(find.text(m.title), findsOneWidget);
     }
     expect(find.text('하나만 해도 충분해요'), findsOneWidget);
-    expect(find.text('작은 침실'), findsOneWidget);
+    expect(find.text('방1'), findsOneWidget);
     expect(find.text('오늘 0번 완료'), findsOneWidget);
 
     await tester.tap(find.text('마이'));
