@@ -1,8 +1,9 @@
 # 저두잇 '내 공간' 도트 그림을 앱 이미지로 뽑는다.
-#   python export.py
-# assets/space/ 에 방 단계별 PNG, 캐릭터, 잠긴 칸을 만들고
-# lib/models/space_art.dart 에 위치 상수를 써 준다. (Pillow 필요)
-import json, os, sys
+#   python export.py [--preview]
+# 방은 '껍데기'(바닥·벽·창문·벽에 붙은 것)와 가구·소품 그림을 따로 만든다.
+# 가구와 소품은 앱에서 마음대로 옮길 수 있고, 앞뒤 가림은 앱이 바닥 칸 위치로 계산한다.
+# assets/space/ 에 PNG를, lib/models/space_art.dart 에 위치 정보를 써 준다. (Pillow 필요)
+import hashlib, io, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import rooms2, hive
@@ -10,9 +11,8 @@ HW = 44
 rooms2.HW = HW; hive.HW = HW
 from PIL import Image, ImageDraw
 from iso2 import Scene, render
-from rooms2 import (WOOD, WOODT, window, sun, crate, books_floor, plant_small, plant_big, mat,
-                    dumbbell, shoes, bed, nightstand, cabinet, fairy, desk, desk_items, monitor,
-                    lamp, chair, rug, frames, drawer, bin_)
+from rooms2 import (N, window, sun, crate, books_floor, plant_small, plant_big, mat, dumbbell, shoes, bed,
+                    nightstand, cabinet, fairy, desk, desk_items, monitor, lamp, chair, rug, frames, drawer, bin_)
 from hive import base_col, bookshelf, armchair, floor_lamp, side_table, hexpoly
 from chibi import bear_img, ham_img
 import decor
@@ -21,6 +21,7 @@ ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 OUT = os.path.join(ROOT, 'assets', 'space')
 DART = os.path.join(ROOT, 'lib', 'models', 'space_art.dart')
 RW, RH, OX, OY = 176, 192, 88, 98
+GLOW = (255, 214, 140)
 
 
 def lifted(fn, dz):
@@ -39,67 +40,136 @@ cabinet_hi = lifted(cabinet, 7)
 fairy_hi = lifted(fairy, 9)
 
 
-def bed_window(s, day):
-    window(s, 13, 9, 24, 13, day)
+# ---------- 껍데기: 바닥, 벽, 창문, 벽에 붙은 것 ----------
 
-
-def bedroom(stage, night=False):
-    """작은 침실. 0단계는 어둡고 짐 상자가 쌓인 방, 미션을 할수록 회복된다."""
+def bedroom_shell(stage, night):
     day = stage >= 1 and not night
-    s = Scene(); rooms2.base(s); bed_window(s, day)
-    if stage <= 1:
+    s = Scene(); rooms2.base(s); window(s, 13, 9, 24, 13, day)
+    if stage <= 1:  # 처음엔 상자가 쌓인 방. 이때는 옮길 가구가 없다.
         crate(s, 5, 6); crate(s, 24, 20); books_floor(s, 13, 7)
-    if stage >= 2: nightstand(s, 0, 8, day); bed(s, 0, 14)
-    if stage in (2, 3): books_floor(s, 13, 7)
-    if stage >= 3: rug(s, 12, 19)
-    if stage >= 4: desk(s, 12, 0); desk_items(s, 13, 0); chair(s, 21, 9)
-    if stage >= 5: plant_big(s, 32, 30)
-    if stage >= 6: monitor(s, 21, 0, day); lamp(s, 28, 2, day)
     if stage >= 7: cabinet_hi(s, 0, 4); frames_hi(s, 30)
-    if stage >= 8: fairy_hi(s, 3, 36); plant_small(s, 35, 13)
-    if stage >= 9: drawer(s, 32, 0); bin_(s, 32, 8)
-    if stage >= 10: mat(s, 13, 33); dumbbell(s, 26, 34); shoes(s, 4, 34)
+    if stage >= 8: fairy_hi(s, 3, 36)
     return s, day
 
 
-def study(stage, night=False):
-    """책 읽는 방. 처음엔 창문만 있는 빈 방."""
+def study_shell(stage, night):
     day = not night
     s = Scene(); base_col(s, '#7f9486', '#6c8174', '#e2c39a', '#d8b78c', '#cdaa7e')
     window(s, 24, 8, 24, 13, day)
-    if stage >= 1: bookshelf(s, 4, 0)
-    if stage >= 2: rug(s, 10, 14, 12, 10)
-    if stage >= 3: armchair(s, 6, 16)
-    if stage >= 4: side_table(s, 14, 18)
-    if stage >= 5: plant_small(s, 2, 26)
-    if stage >= 6: floor_lamp(s, 17, 3, day)
     return s, day
 
 
-# 방 정의: (id, 그리는 함수, 단계 수, 햇빛 함수, 캐릭터 자리(단계별 x,y,z), 사진 액자 (x0,z0))
+# ---------- 가구: 미션으로 생기고, 옮기거나 보관함에 넣을 수 있다 ----------
+# (id, 이름, 생기는 단계, 바닥 칸 (x, y, w, d), 납작한지(러그처럼 위에 물건을 올릴 수 있는지),
+#  그리는 함수 f(s, x, y, day, stage), 그림이 바뀌는 단계 목록)
+
+def _desk(s, x, y, day, stage):
+    desk(s, x, y); desk_items(s, x + 1, y)
+    if stage >= 6: monitor(s, x + 9, y, day); lamp(s, x + 16, y + 2, day)
+
+
+FURNITURE = {
+    'bedroom': [
+        ('nightstand', '협탁', 2, (0, 8, 5, 5), False, lambda s, x, y, d, st: nightstand(s, x, y, d), [2]),
+        ('bed', '침대', 2, (0, 14, 10, 17), False, lambda s, x, y, d, st: bed(s, x, y), [2]),
+        ('rug', '러그', 3, (12, 19, 15, 12), True, lambda s, x, y, d, st: rug(s, x, y), [3]),
+        ('desk', '책상', 4, (12, 0, 19, 7), False, _desk, [4, 6]),
+        ('chair', '의자', 4, (21, 9, 5, 5), False, lambda s, x, y, d, st: chair(s, x, y), [4]),
+        ('plant_big', '큰 화분', 5, (31, 29, 8, 7), False, lambda s, x, y, d, st: plant_big(s, x + 1, y + 1), [5]),
+        ('plant_small', '작은 화분', 8, (35, 13, 3, 3), False, lambda s, x, y, d, st: plant_small(s, x, y), [8]),
+        ('drawer', '서랍장', 9, (32, 0, 7, 5), False, lambda s, x, y, d, st: drawer(s, x, y), [9]),
+        ('bin', '휴지통', 9, (32, 8, 3, 3), False, lambda s, x, y, d, st: bin_(s, x, y), [9]),
+        ('mat', '운동 매트', 10, (13, 33, 10, 5), True, lambda s, x, y, d, st: mat(s, x, y), [10]),
+        ('dumbbell', '아령', 10, (26, 34, 2, 5), False, lambda s, x, y, d, st: dumbbell(s, x, y), [10]),
+        ('shoes', '운동화', 10, (4, 34, 3, 5), False, lambda s, x, y, d, st: shoes(s, x, y), [10]),
+    ],
+    'study': [
+        ('bookshelf', '책장', 1, (4, 0, 10, 4), False, lambda s, x, y, d, st: bookshelf(s, x, y), [1]),
+        ('rug', '러그', 2, (10, 14, 12, 10), True, lambda s, x, y, d, st: rug(s, x, y, 12, 10), [2]),
+        ('armchair', '안락의자', 3, (6, 16, 7, 6), False, lambda s, x, y, d, st: armchair(s, x, y), [3]),
+        ('side_table', '작은 탁자', 4, (14, 18, 4, 4), False, lambda s, x, y, d, st: side_table(s, x, y), [4]),
+        ('plant_small', '작은 화분', 5, (2, 26, 3, 3), False, lambda s, x, y, d, st: plant_small(s, x, y), [5]),
+        ('floor_lamp', '스탠드', 6, (16, 2, 3, 3), False, lambda s, x, y, d, st: floor_lamp(s, x + 1, y + 1, d), [6]),
+    ],
+}
+
+# 방 정의: (id, 껍데기 함수, 단계 수, 햇빛, 캐릭터가 서고 싶은 자리, 사진 액자 (x0, z0))
 ROOMS = [
-    ('bedroom', bedroom, 11, sun(13, 9), lambda st: (20, 25, 1), (2, 24)),
-    ('study', study, 7, sun(24, 8), lambda st: (9, 19, 5) if st >= 3 else (15, 20, 1), (13, 26)),
+    ('bedroom', bedroom_shell, 11, sun(13, 9), (20, 25), (2, 24)),
+    ('study', study_shell, 7, sun(24, 8), (16, 26), (13, 26)),
 ]
 
+# 왼쪽 벽에서 소품을 걸 수 없는 곳: (y, z, w, h, 생기는 단계)
+WALL_BLOCKS = {
+    'bedroom': [(3, 22, 18, 10, 7), (3, 28, 34, 8, 8)],
+    'study': [],
+}
 
-def mask(img):
+# 산 소품을 그려 두는 기준 자리. 앱은 여기서 얼마나 옮겼는지로 위치를 계산한다.
+DECOR_REF_FLOOR = (20, 20)
+DECOR_REF_WALL = (20, 12)
+DECOR_SIZE = {  # 바닥: (w, d), 벽: (w, h)
+    'poster': (6, 8), 'clock': (5, 5), 'garland': (12, 4),
+    'cushion': (5, 5), 'moodlamp': (3, 3), 'cactus': (3, 3), 'books': (5, 3),
+}
+
+
+# ---------- 그리기 ----------
+
+def hexmask():
     m = Image.new('L', (RW, RH), 0); ImageDraw.Draw(m).polygon(hexpoly(OX, OY), fill=255)
-    out = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); out.paste(img.convert('RGB'), (0, 0), m)
-    return out
+    return m
 
 
-def anchor(x, y, z, sprite):
-    sx = OX + (x - y) * 2; sy = OY + (x + y) - z * 2
-    return sx - 11, sy - sprite.height + 2
+def save_png(img, name):
+    img.save(os.path.join(OUT, name), optimize=True)
+
+
+def sprite(scene, first_oid, night, light=None):
+    """scene 안에서 first_oid 다음에 만든 물체만 투명 배경 그림으로 잘라 낸다.
+    밤에 빛나는 물체는 둘레의 빛 번짐도 반투명으로 함께 담는다. (그림, 왼쪽, 위)"""
+    img, ids, add = render(scene, RW, RH, OX, OY, night=night, light=light, raw=True)
+    out = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); px = out.load()
+    for y in range(RH):
+        for x in range(RW):
+            if ids[y][x] > first_oid:
+                px[x, y] = tuple(img[y][x]) + (255,)
+            elif night and add[y][x] > 0.004:
+                px[x, y] = GLOW + (int(min(0.38, add[y][x]) * 255),)
+    box = out.getbbox()
+    if box is None:
+        raise RuntimeError('빈 그림')
+    return out.crop(box), box[0], box[1]
+
+
+def furniture_sprite(build, fp, stage, night):
+    s = Scene(); first = s.oid
+    build(s, fp[0], fp[1], not night, stage)
+    return sprite(s, first, night)
+
+
+def decor_sprite(item, night):
+    kind, draw = decor.ITEMS[item]
+    s = Scene()
+    if kind == 'wall':
+        # 벽 소품은 벽 칸을 바꿔 끼우는 방식이라 벽을 깔고 그 위의 소품만 잘라 낸다.
+        s.new('wall', 'env')
+        for y in range(-1, N):
+            for z in range(0, HW + 1):
+                s.box(-1, y, z, 1, 1, 1, '#808080')
+        first = s.oid
+        draw(s, *DECOR_REF_WALL, night=night)
+    else:
+        first = s.oid
+        draw(s, *DECOR_REF_FLOOR, night=night)
+    return sprite(s, first, night)
 
 
 def locked_cell():
     p = hexpoly(OX, OY)
     im = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
     d.polygon(p, fill=(43, 63, 88)); d.line(p + [p[0]], fill=(80, 104, 132), width=1)
-    # 닫힌 문 하나 (가운데)
-    cx, cy = OX + 2, OY - 4
+    cx, cy = OX + 2, OY - 4  # 닫힌 문 하나
     d.rectangle([cx - 9, cy - 14, cx + 9, cy + 14], fill=(122, 84, 62))
     d.rectangle([cx - 7, cy - 12, cx + 7, cy + 14], fill=(150, 104, 76))
     d.rectangle([cx - 5, cy - 10, cx + 5, cy - 2], fill=(136, 94, 68))
@@ -109,110 +179,179 @@ def locked_cell():
     return im
 
 
-GLOW = (255, 214, 140)
-
-
-def _diff(a, b):
-    pa, pb = a.load(), b.load()
-    return {(x, y) for y in range(RH) for x in range(RW) if pa[x, y] != pb[x, y]}
-
-
-def decor_layers(fn, stages, light, slot_pos, item):
-    """소품 하나를 한 자리에 놓은 그림 층(낮, 밤). 다 채운 방에 놓았을 때와 안 놓았을 때의 차이만 남긴다.
-    밤에 빛나는 소품의 번짐은 반투명 빛 층으로 바꿔서 어떤 단계 방 위에 올려도 맞게 한다."""
-    kind, draw = decor.ITEMS[item]
-    hexm = Image.new('L', (RW, RH), 0); ImageDraw.Draw(hexm).polygon(hexpoly(OX, OY), fill=255)
-    hm = hexm.load()
-    out = []
-    foot = None
-    for night in (False, True):
-        base, day = fn(stages - 1, night)
-        withs, _ = fn(stages - 1, night)
-        draw(withs, *slot_pos, night=night)
-        args = dict(night=not day, light=light if day else None)
-        a = render(base, RW, RH, OX, OY, **args); b = render(withs, RW, RH, OX, OY, **args)
-        changed = _diff(a, b)
-        if foot is None:
-            foot = changed  # 낮 차이 = 소품이 차지하는 칸
-        layer = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); lp = layer.load()
-        pa, pb = a.load(), b.load()
-        for (x, y) in changed:
-            if not hm[x, y]: continue
-            if (x, y) in foot:
-                lp[x, y] = pb[x, y] + (255,)
-            else:
-                # 빛 번짐: b = a*(1-t) + GLOW*t 에서 t를 구한다
-                best = 0.0
-                for i in range(3):
-                    den = GLOW[i] - pa[x, y][i]
-                    if abs(den) > 20: best = max(best, (pb[x, y][i] - pa[x, y][i]) / den)
-                t = max(0.0, min(0.6, best))
-                if t > 0.01: lp[x, y] = GLOW + (int(t * 255),)
-        out.append(layer)
-    return out
-
-
 def main():
     os.makedirs(OUT, exist_ok=True)
-    os.makedirs(os.path.join(OUT, 'decor'), exist_ok=True)
+    # 예전 방식(통째 그림, 자리별 소품 층) 파일은 지운다.
+    for f in os.listdir(OUT):
+        if f.endswith('.png'): os.remove(os.path.join(OUT, f))
+    for sub in ('decor', 'furniture'):
+        d = os.path.join(OUT, sub)
+        if os.path.isdir(d):
+            for f in os.listdir(d): os.remove(os.path.join(d, f))
+        os.makedirs(d, exist_ok=True)
+
     bear, ham = bear_img(1), ham_img(1)
-    bear.save(os.path.join(OUT, 'bear.png')); ham.save(os.path.join(OUT, 'hamster.png'))
-    locked_cell().save(os.path.join(OUT, 'locked.png'))
-    meta = []
-    for rid, fn, stages, light, spot, frame in ROOMS:
-        spots = []
+    save_png(bear, 'bear.png'); save_png(ham, 'hamster.png')
+    save_png(locked_cell(), 'locked.png')
+    hm = hexmask()
+
+    rooms_meta = []
+    for rid, shell_fn, stages, light, buddy_spot, frame in ROOMS:
+        shells = []  # 단계별 껍데기 파일 이름 (같은 그림은 한 파일)
+        seen = {}
         for st in range(stages):
+            names = []
             for night in (False, True):
-                s, day = fn(st, night)
+                s, day = shell_fn(st, night)
                 img = render(s, RW, RH, OX, OY, night=not day, light=light if day else None)
-                suffix = '_n' if night else ''
-                mask(img).save(os.path.join(OUT, f'{rid}_{st}{suffix}.png'), optimize=True)
-                if '--preview' in sys.argv and st in (0, stages - 1):
-                    pv = mask(img); pv.alpha_composite(bear, anchor(*spot(st), bear))
-                    pv.resize((RW * 3, RH * 3), Image.NEAREST).save(os.path.join(HERE, f'preview_{rid}_{st}{suffix}.png'))
-            spots.append(anchor(*spot(st), bear))
-        for slot, pos in decor.SLOTS[rid].items():
-            for item, (kind, _) in decor.ITEMS.items():
-                if kind != decor.slot_kind(slot): continue
-                dayl, nightl = decor_layers(fn, stages, light, pos, item)
-                dayl.save(os.path.join(OUT, 'decor', f'{rid}_{slot}_{item}.png'), optimize=True)
-                nightl.save(os.path.join(OUT, 'decor', f'{rid}_{slot}_{item}_n.png'), optimize=True)
-        meta.append((rid, stages, spots, frame))
+                out = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); out.paste(img, (0, 0), hm)
+                buf = io.BytesIO(); out.save(buf, 'PNG'); key = hashlib.md5(buf.getvalue()).hexdigest()
+                if key not in seen:
+                    seen[key] = f"{rid}_shell_{st}{'_n' if night else ''}.png"
+                    save_png(out, seen[key])
+                names.append(seen[key])
+            shells.append(tuple(names))
+        furn = []
+        for fid, name, unlock, fp, flat, build, variants in FURNITURE[rid]:
+            vs = []
+            for vst in variants:
+                pair = []
+                for night in (False, True):
+                    spr, left, top = furniture_sprite(build, fp, vst, night)
+                    fname = f"furniture/{rid}_{fid}_{vst}{'_n' if night else ''}.png"
+                    save_png(spr, fname)
+                    pair.append((fname, left, top, spr.width, spr.height))
+                vs.append((vst, pair))
+            furn.append((fid, name, unlock, fp, flat, vs))
+        rooms_meta.append((rid, stages, shells, furn, buddy_spot, frame))
+
+    decor_meta = []
+    for item, (kind, _) in decor.ITEMS.items():
+        pair = []
+        for night in (False, True):
+            spr, left, top = decor_sprite(item, night)
+            fname = f"decor/{item}{'_n' if night else ''}.png"
+            save_png(spr, fname)
+            pair.append((fname, left, top, spr.width, spr.height))
+        decor_meta.append((item, kind, DECOR_SIZE[item], pair))
+
     p = hexpoly(OX, OY)
     dx = p[1][0] - p[5][0] + 4
     dy = (p[4][1] - p[0][1]) + 2
-    write_dart(meta, bear.size, dx, dy)
-    print('ok', meta, 'hive', dx, dy)
+    write_dart(rooms_meta, decor_meta, bear.size, dx, dy)
+    if '--preview' in sys.argv:
+        preview(rooms_meta, decor_meta, bear)
+    print('ok', len(os.listdir(OUT)), 'files')
 
 
-def write_dart(meta, sprite, dx, dy):
-    lines = [
+def _spr(t):
+    fname, left, top, w, h = t
+    return f"Sprite('assets/space/{fname}', {left}, {top}, {w}, {h})"
+
+
+def write_dart(rooms_meta, decor_meta, buddy, dx, dy):
+    L = [
         '// tools/space_art/export.py 가 만든 파일. 직접 고치지 말고 스크립트를 다시 돌린다.',
         '',
         '/// 방 그림 한 장의 크기(도트 픽셀).',
         f'const double kRoomArtWidth = {RW};',
         f'const double kRoomArtHeight = {RH};',
         '',
+        '/// 방 바닥 칸 수(가로·세로)와 벽 높이 칸 수.',
+        f'const int kRoomCells = {N};',
+        f'const int kWallCells = {HW};',
+        '',
         '/// 캐릭터 그림 크기(도트 픽셀).',
-        f'const double kBuddyArtWidth = {sprite[0]};',
-        f'const double kBuddyArtHeight = {sprite[1]};',
+        f'const double kBuddyArtWidth = {buddy[0]};',
+        f'const double kBuddyArtHeight = {buddy[1]};',
         '',
         '/// 벌집 보기에서 옆 칸, 아래 칸까지의 거리(도트 픽셀).',
         f'const double kHiveDx = {dx};',
         f'const double kHiveDy = {dy};',
         '',
-        '/// 방 그림의 원점. 벽 위 액자 칸 위치를 계산할 때 쓴다.',
+        '/// 방 그림의 원점. 칸 위치를 화면 위치로 바꿀 때 쓴다.',
         f'const double kRoomOriginX = {OX};',
         f'const double kRoomOriginY = {OY};',
         '',
-        'class RoomArt {',
-        '  const RoomArt({required this.stages, required this.buddySpots, required this.frameX, required this.frameZ});',
+        '/// 산 소품을 그려 둔 기준 자리 (바닥 x, y / 왼쪽 벽 y, z).',
+        f'const int kDecorRefFloorX = {DECOR_REF_FLOOR[0]};',
+        f'const int kDecorRefFloorY = {DECOR_REF_FLOOR[1]};',
+        f'const int kDecorRefWallY = {DECOR_REF_WALL[0]};',
+        f'const int kDecorRefWallZ = {DECOR_REF_WALL[1]};',
         '',
-        '  /// 단계 수. assets/space/<id>_<단계>.png',
+        '/// 잘라 낸 그림 한 장과, 기준 자리에 놓였을 때의 왼쪽 위 (도트 픽셀).',
+        'class Sprite {',
+        '  const Sprite(this.asset, this.left, this.top, this.width, this.height);',
+        '  final String asset;',
+        '  final int left;',
+        '  final int top;',
+        '  final int width;',
+        '  final int height;',
+        '}',
+        '',
+        '/// 가구 그림. 단계에 따라 그림이 바뀔 수 있다 (예: 책상 위에 모니터가 생김).',
+        'class FurnitureArt {',
+        '  const FurnitureArt(this.id, this.name, this.unlock, this.x, this.y, this.w, this.d, this.flat, this.variants);',
+        '  final String id;',
+        '  final String name;',
+        '',
+        '  /// 이 단계부터 방에 생긴다.',
+        '  final int unlock;',
+        '',
+        '  /// 처음 놓이는 바닥 칸과 크기.',
+        '  final int x;',
+        '  final int y;',
+        '  final int w;',
+        '  final int d;',
+        '',
+        '  /// 러그처럼 납작해서 위에 다른 물건을 올릴 수 있는지.',
+        '  final bool flat;',
+        '',
+        '  /// (이 단계부터, 낮 그림, 밤 그림). 단계 순서대로.',
+        '  final List<(int, Sprite, Sprite)> variants;',
+        '',
+        '  (Sprite, Sprite) spritesAt(int stage) {',
+        '    var pick = variants.first;',
+        '    for (final v in variants) {',
+        '      if (v.$1 <= stage) pick = v;',
+        '    }',
+        '    return (pick.$2, pick.$3);',
+        '  }',
+        '}',
+        '',
+        '/// 왼쪽 벽에서 소품을 걸 수 없는 곳 (y, z, 너비, 높이, 생기는 단계).',
+        'class WallBlock {',
+        '  const WallBlock(this.y, this.z, this.w, this.h, this.from);',
+        '  final int y;',
+        '  final int z;',
+        '  final int w;',
+        '  final int h;',
+        '  final int from;',
+        '}',
+        '',
+        'class RoomArt {',
+        '  const RoomArt({',
+        '    required this.stages,',
+        '    required this.shells,',
+        '    required this.furniture,',
+        '    required this.wallBlocks,',
+        '    required this.buddyX,',
+        '    required this.buddyY,',
+        '    required this.frameX,',
+        '    required this.frameZ,',
+        '  });',
+        '',
         '  final int stages;',
         '',
-        '  /// 단계별 캐릭터 그림의 왼쪽 위 (도트 픽셀).',
-        '  final List<(double, double)> buddySpots;',
+        '  /// 단계별 껍데기(바닥·벽·창문) 그림 (낮, 밤).',
+        '  final List<(String, String)> shells;',
+        '',
+        '  final List<FurnitureArt> furniture;',
+        '  final List<WallBlock> wallBlocks;',
+        '',
+        '  /// 캐릭터가 서고 싶은 바닥 칸. 막혀 있으면 가까운 빈 칸에 선다.',
+        '  final int buddyX;',
+        '  final int buddyY;',
         '',
         '  /// 오른쪽 뒷벽 사진 액자의 시작 칸.',
         '  final int frameX;',
@@ -221,12 +360,58 @@ def write_dart(meta, sprite, dx, dy):
         '',
         'const Map<String, RoomArt> kRoomArt = {',
     ]
-    for rid, stages, spots, (fx, fz) in meta:
-        sp = ', '.join(f'({x}.0, {y}.0)' for x, y in spots)
-        lines.append(f"  '{rid}': RoomArt(stages: {stages}, buddySpots: [{sp}], frameX: {fx}, frameZ: {fz}),")
-    lines.append('};')
+    for rid, stages, shells, furn, (bx, by), (fx, fz) in rooms_meta:
+        L.append(f"  '{rid}': RoomArt(")
+        L.append(f'    stages: {stages},')
+        L.append('    shells: [')
+        for d, n in shells:
+            L.append(f"      ('assets/space/{d}', 'assets/space/{n}'),")
+        L.append('    ],')
+        L.append('    furniture: [')
+        for fid, name, unlock, (x, y, w, d), flat, vs in furn:
+            vtxt = ', '.join(f'({vst}, {_spr(pair[0])}, {_spr(pair[1])})' for vst, pair in vs)
+            L.append(f"      FurnitureArt('{fid}', '{name}', {unlock}, {x}, {y}, {w}, {d}, {'true' if flat else 'false'}, [{vtxt}]),")
+        L.append('    ],')
+        L.append('    wallBlocks: [')
+        for (y, z, w, h, frm) in WALL_BLOCKS[rid]:
+            L.append(f'      WallBlock({y}, {z}, {w}, {h}, {frm}),')
+        L.append('    ],')
+        L.append(f'    buddyX: {bx},')
+        L.append(f'    buddyY: {by},')
+        L.append(f'    frameX: {fx},')
+        L.append(f'    frameZ: {fz},')
+        L.append('  ),')
+    L.append('};')
+    L.append('')
+    L.append('/// 산 소품 그림: id → (벽 소품인지, 너비, 깊이(바닥)/높이(벽), 낮 그림, 밤 그림).')
+    L.append('const Map<String, (bool, int, int, Sprite, Sprite)> kDecorArt = {')
+    for item, kind, (w, d), pair in decor_meta:
+        L.append(f"  '{item}': ({'true' if kind == 'wall' else 'false'}, {w}, {d}, {_spr(pair[0])}, {_spr(pair[1])}),")
+    L.append('};')
     with open(DART, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(lines) + '\n')
+        f.write('\n'.join(L) + '\n')
+
+
+def preview(rooms_meta, decor_meta, bear):
+    """확인용: 다 채운 방 낮·밤. 앱과 같은 방식(껍데기 + 가구를 깊이 순서로)으로 겹친다."""
+    tiles = []
+    for rid, stages, shells, furn, _, _ in rooms_meta:
+        st = stages - 1
+        for night in (0, 1):
+            im = Image.new('RGBA', (RW, RH), (34, 52, 74, 255))
+            im.alpha_composite(Image.open(os.path.join(OUT, shells[st][night])))
+            objs = []
+            for fid, name, unlock, (x, y, w, d), flat, vs in furn:
+                if unlock > st: continue
+                pair = [p for vst, p in vs if vst <= st][-1]
+                fname, left, top, _, _ = pair[night]
+                objs.append((0 if flat else 1, x + y, Image.open(os.path.join(OUT, fname)), left, top))
+            for _, _, spr, left, top in sorted(objs, key=lambda o: (o[0], o[1])):
+                im.alpha_composite(spr, (left, top))
+            tiles.append(im)
+    sh = Image.new('RGB', (RW * len(tiles), RH), 'white')
+    for i, t in enumerate(tiles): sh.paste(t, (i * RW, 0))
+    sh.resize((sh.width * 3, sh.height * 3), Image.NEAREST).save(os.path.join(HERE, 'preview.png'))
 
 
 if __name__ == '__main__':

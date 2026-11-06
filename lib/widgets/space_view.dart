@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../models/buddy.dart';
 import '../models/decor.dart';
+import '../models/layout.dart';
 import '../models/space.dart';
 import '../models/space_art.dart';
 
-/// 방 하나. 미리 그린 단계 그림 위에 꾸미기 소품, 액자 사진, 캐릭터를 얹는다.
+/// 방 하나. 껍데기(바닥·벽·창문) 위에 벽 소품과 액자, 그다음 가구·소품·캐릭터를
+/// 바닥 칸 위치로 계산한 앞뒤 순서대로 얹는다.
 class RoomPicture extends StatelessWidget {
   const RoomPicture({
     super.key,
@@ -15,7 +17,10 @@ class RoomPicture extends StatelessWidget {
     this.photo,
     this.showBuddy = true,
     this.night = false,
-    this.decor = const {},
+    this.decor = const DecorData(),
+    this.things,
+    this.selectedKey,
+    this.selectionValid = true,
   });
 
   final String roomId;
@@ -29,48 +34,129 @@ class RoomPicture extends StatelessWidget {
   /// 밤 그림(불 켜진 스탠드·무드등)을 쓸지.
   final bool night;
 
-  /// 자리 → 소품 id.
-  final Map<String, String> decor;
+  /// 산 소품과 배치.
+  final DecorData decor;
+
+  /// 옮기는 중일 때 미리 계산한 배치. 없으면 [decor]로 계산한다.
+  final List<PlacedThing>? things;
+
+  /// 고른 물건. 바닥(또는 벽)에 차지하는 칸을 표시한다.
+  final String? selectedKey;
+  final bool selectionValid;
+
+  int get _stage {
+    final art = kRoomArt[roomId]!;
+    return stage < 0 ? 0 : (stage >= art.stages ? art.stages - 1 : stage);
+  }
 
   @override
   Widget build(BuildContext context) {
     final art = kRoomArt[roomId]!;
-    final st = stage < 0 ? 0 : (stage >= art.stages ? art.stages - 1 : stage);
-    final spot = art.buddySpots[st];
+    final st = _stage;
+    final list = things ?? thingsIn(roomId, st, decor);
+    final walls = [for (final t in list) if (t.wall) t];
+    final flats = [for (final t in list) if (!t.wall && t.flat) t]..sort((p, q) => (p.a + p.b).compareTo(q.a + q.b));
+    final blockers = [for (final t in list) if (!t.wall && !t.flat) t];
+    final (bx, by) = buddySpot(roomId, list);
+    final order = paintOrder([
+      for (final t in blockers) FloorBox(t.a, t.b, t.w, t.d),
+      if (showBuddy) FloorBox(bx - 1, by - 1, 3, 2),
+    ]);
+    PlacedThing? selected;
+    for (final t in list) {
+      if (t.key == selectedKey) selected = t;
+    }
+    final shell = art.shells[st];
     return AspectRatio(
       aspectRatio: kRoomArtWidth / kRoomArtHeight,
       child: LayoutBuilder(builder: (context, c) {
         final s = c.maxWidth / kRoomArtWidth;
+        Widget sprite(PlacedThing t) {
+          final (l, top, w, h) = t.rect(atNight: night);
+          return Positioned(
+            key: ValueKey(t.key),
+            left: l * s,
+            top: top * s,
+            width: w * s,
+            height: h * s,
+            child: Image.asset(night ? t.night.asset : t.day.asset,
+                filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),
+          );
+        }
+
         return Stack(
           children: [
             Positioned.fill(
-              child: Image.asset('assets/space/${roomId}_$st${night ? '_n' : ''}.png',
+              child: Image.asset(night ? shell.$2 : shell.$1,
                   filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),
             ),
-            if (canDecorate(roomId, st))
-              for (final e in decor.entries)
-                if (decorById(e.value) != null)
-                  Positioned.fill(
-                    child: Image.asset(decorAsset(roomId, e.key, e.value, night: night),
-                        filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),
-                  ),
+            for (final t in walls) sprite(t),
             if (photo != null)
               Positioned.fill(
                 child: CustomPaint(painter: _FramePainter(photo!, art.frameX, art.frameZ, s)),
               ),
-            if (showBuddy)
-              Positioned(
-                left: spot.$1 * s,
-                top: spot.$2 * s,
-                width: kBuddyArtWidth * s,
-                height: kBuddyArtHeight * s,
-                child: Image.asset(buddy.asset, filterQuality: FilterQuality.none, fit: BoxFit.fill),
+            for (final t in flats) sprite(t),
+            if (selected != null)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(painter: _FootprintPainter(selected, s, selectionValid)),
+                ),
               ),
+            for (final i in order)
+              if (i < blockers.length)
+                sprite(blockers[i])
+              else
+                Positioned(
+                  key: const ValueKey('buddy'),
+                  left: (kRoomOriginX + (bx - by) * 2 - 11) * s,
+                  top: (kRoomOriginY + bx + by - kBuddyArtHeight) * s,
+                  width: kBuddyArtWidth * s,
+                  height: kBuddyArtHeight * s,
+                  child: Image.asset(buddy.asset, filterQuality: FilterQuality.none, fit: BoxFit.fill),
+                ),
           ],
         );
       }),
     );
   }
+}
+
+/// 고른 물건이 차지하는 칸: 바닥이면 마름모, 벽이면 비스듬한 사각형.
+class _FootprintPainter extends CustomPainter {
+  _FootprintPainter(this.thing, this.scale, this.valid);
+
+  final PlacedThing thing;
+  final double scale;
+  final bool valid;
+
+  Offset _floor(int x, int y) =>
+      Offset((kRoomOriginX + 2 * (x - y)) * scale, (kRoomOriginY + x + y) * scale);
+
+  Offset _wall(int y, int z) =>
+      Offset((kRoomOriginX - 2 * y - 2) * scale, (kRoomOriginY + y - 2 * z + 1) * scale);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = thing;
+    final pts = t.wall
+        ? [_wall(t.a, t.b + t.d), _wall(t.a + t.w, t.b + t.d), _wall(t.a + t.w, t.b), _wall(t.a, t.b)]
+        : [_floor(t.a, t.b), _floor(t.a + t.w, t.b), _floor(t.a + t.w, t.b + t.d), _floor(t.a, t.b + t.d)];
+    final path = Path()..addPolygon(pts, true);
+    final color = valid ? const Color(0xFF4FD18B) : const Color(0xFFFF5A5A);
+    canvas.drawPath(path, Paint()..color = color.withValues(alpha: 0.28));
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_FootprintPainter old) =>
+      old.thing.key != thing.key || old.thing.a != thing.a || old.thing.b != thing.b ||
+      old.scale != scale || old.valid != valid;
 }
 
 /// 오른쪽 뒷벽에 거는 10×10칸 액자(테두리 1칸 + 사진 8×8). 벽 기울기에 맞춰 칸을 비스듬히 그린다.
@@ -202,7 +288,7 @@ class HivePicture extends StatelessWidget {
                           photo: id == shownRoom ? photo : null,
                           showBuddy: id == shownRoom,
                           night: night,
-                          decor: decor.slotsOf(id),
+                          decor: decor,
                         ),
                 ),
             ],

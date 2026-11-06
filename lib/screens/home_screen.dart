@@ -979,7 +979,7 @@ class _RoomCard extends StatelessWidget {
                             buddy: buddy,
                             photo: photo,
                             night: night,
-                            decor: decor.slotsOf(shownRoom),
+                            decor: decor,
                           ),
                   ),
                 ),

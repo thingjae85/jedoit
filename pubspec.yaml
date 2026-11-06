@@ -26,3 +26,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/space/
+    - assets/space/furniture/
+    - assets/space/decor/

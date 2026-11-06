@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 꾸미기 소품. 코인으로 사서 방의 정해진 자리(벽 1, 바닥 2)에 놓는다.
+/// 꾸미기 소품. 코인으로 사서 방 바닥이나 왼쪽 벽 아무 데나 놓는다.
 /// 성장(방 회복)을 대신하지 않고, 바뀐 방을 내 취향으로 표현하는 보조 장치다.
 enum DecorSpot { wall, floor }
 
@@ -31,99 +31,155 @@ DecorItem? decorById(String id) {
   return null;
 }
 
-/// 방마다 같은 자리 이름. 벽은 하나, 바닥은 둘.
-const Map<DecorSpot, List<String>> kDecorSlots = {
-  DecorSpot.wall: ['wall'],
-  DecorSpot.floor: ['floor1', 'floor2'],
-};
-
 /// 방이 이만큼 회복돼야 꾸밀 수 있다. 침실은 처음에 상자가 쌓여 있어서 2단계부터.
 const Map<String, int> kDecorMinStage = {'bedroom': 2, 'study': 0};
 
 bool canDecorate(String roomId, int stage) => stage >= (kDecorMinStage[roomId] ?? 0);
 
-String decorAsset(String roomId, String slot, String itemId, {bool night = false}) =>
-    'assets/space/decor/${roomId}_${slot}_$itemId${night ? '_n' : ''}.png';
+/// 방 하나의 배치. 위치는 바닥이면 (x, y), 벽이면 (y, z) 칸.
+class RoomLayout {
+  const RoomLayout({this.furniture = const {}, this.stored = const {}, this.decor = const {}});
 
-/// 산 소품과 놓은 자리, 쓴 코인. 바꿀 때마다 새 값을 돌려준다.
+  /// 옮긴 가구의 위치. 없으면 처음 자리.
+  final Map<String, (int, int)> furniture;
+
+  /// 보관함에 넣은 가구.
+  final Set<String> stored;
+
+  /// 이 방에 놓은 산 소품의 위치.
+  final Map<String, (int, int)> decor;
+
+  RoomLayout copyWith({Map<String, (int, int)>? furniture, Set<String>? stored, Map<String, (int, int)>? decor}) =>
+      RoomLayout(furniture: furniture ?? this.furniture, stored: stored ?? this.stored, decor: decor ?? this.decor);
+
+  Map<String, dynamic> toJson() => {
+        'f': {for (final e in furniture.entries) e.key: [e.value.$1, e.value.$2]},
+        's': stored.toList(),
+        'd': {for (final e in decor.entries) e.key: [e.value.$1, e.value.$2]},
+      };
+
+  static Map<String, (int, int)> _positions(Object? raw) {
+    final out = <String, (int, int)>{};
+    if (raw is Map) {
+      for (final e in raw.entries) {
+        final v = e.value;
+        if (e.key is String && v is List && v.length == 2 && v[0] is int && v[1] is int) {
+          out[e.key as String] = (v[0] as int, v[1] as int);
+        }
+      }
+    }
+    return out;
+  }
+
+  factory RoomLayout.fromJson(Object? raw) {
+    if (raw is! Map) return const RoomLayout();
+    final stored = raw['s'];
+    return RoomLayout(
+      furniture: _positions(raw['f']),
+      stored: {
+        if (stored is List)
+          for (final s in stored)
+            if (s is String) s
+      },
+      decor: _positions(raw['d']),
+    );
+  }
+}
+
+/// 산 소품, 방마다 배치, 쓴 코인. 바꿀 때마다 새 값을 돌려준다.
 class DecorData {
-  const DecorData({this.owned = const {}, this.placements = const {}, this.spent = 0});
+  const DecorData({this.owned = const {}, this.layouts = const {}, this.spent = 0});
 
   /// 산 소품 id. 소품은 하나씩만 산다.
   final Set<String> owned;
 
-  /// 방 id → (자리 → 소품 id). 놓지 않은 소품은 보관함에 있다.
-  final Map<String, Map<String, String>> placements;
+  final Map<String, RoomLayout> layouts;
 
   /// 지금까지 쓴 코인.
   final int spent;
 
   int available(int earned) => earned - spent;
 
+  RoomLayout layoutOf(String roomId) => layouts[roomId] ?? const RoomLayout();
+
   /// 소품이 놓인 방. 보관함에 있으면 null.
   String? roomOf(String itemId) {
-    for (final e in placements.entries) {
-      if (e.value.containsValue(itemId)) return e.key;
+    for (final e in layouts.entries) {
+      if (e.value.decor.containsKey(itemId)) return e.key;
     }
     return null;
   }
 
-  Map<String, String> slotsOf(String roomId) => placements[roomId] ?? const {};
+  DecorData _with(String roomId, RoomLayout layout, {Set<String>? owned, int? spent}) => DecorData(
+        owned: owned ?? this.owned,
+        layouts: {...layouts, roomId: layout},
+        spent: spent ?? this.spent,
+      );
 
   /// 코인이 모자라거나 이미 있으면 그대로.
   DecorData buy(DecorItem item, int earned) {
     if (owned.contains(item.id) || available(earned) < item.price) return this;
-    return DecorData(owned: {...owned, item.id}, placements: placements, spent: spent + item.price);
+    return DecorData(owned: {...owned, item.id}, layouts: layouts, spent: spent + item.price);
   }
 
-  /// 방에 놓는다. 다른 방에 있었으면 옮기고, 빈 자리가 없으면 첫 자리의 소품을 보관함으로 보낸다.
-  DecorData place(DecorItem item, String roomId) {
-    if (!owned.contains(item.id)) return this;
-    final next = _without(item.id);
-    final slots = Map<String, String>.of(next[roomId] ?? const {});
-    final candidates = kDecorSlots[item.spot]!;
-    final slot = candidates.firstWhere((s) => !slots.containsKey(s), orElse: () => candidates.first);
-    slots[slot] = item.id;
-    next[roomId] = slots;
-    return DecorData(owned: owned, placements: next, spent: spent);
+  /// 산 소품을 방의 (a, b) 칸에 놓는다. 다른 방에 있었으면 옮긴다. 자리 검사는 부르는 쪽에서 한다.
+  DecorData placeDecor(String itemId, String roomId, int a, int b) {
+    if (!owned.contains(itemId)) return this;
+    final cleared = removeDecor(itemId);
+    final layout = cleared.layoutOf(roomId);
+    return cleared._with(roomId, layout.copyWith(decor: {...layout.decor, itemId: (a, b)}));
   }
 
-  /// 보관함으로 치운다.
-  DecorData remove(String itemId) => DecorData(owned: owned, placements: _without(itemId), spent: spent);
+  /// 소품을 보관함으로.
+  DecorData removeDecor(String itemId) => DecorData(
+        owned: owned,
+        layouts: {
+          for (final e in layouts.entries)
+            e.key: e.value.decor.containsKey(itemId)
+                ? e.value.copyWith(decor: {...e.value.decor}..remove(itemId))
+                : e.value,
+        },
+        spent: spent,
+      );
 
-  Map<String, Map<String, String>> _without(String itemId) => {
-        for (final e in placements.entries)
-          e.key: {
-            for (final s in e.value.entries)
-              if (s.value != itemId) s.key: s.value
-          },
+  /// 가구를 (x, y)로 옮긴다. 보관함에 있었으면 꺼낸다.
+  DecorData moveFurniture(String roomId, String id, int x, int y) {
+    final layout = layoutOf(roomId);
+    return _with(
+      roomId,
+      layout.copyWith(furniture: {...layout.furniture, id: (x, y)}, stored: {...layout.stored}..remove(id)),
+    );
+  }
+
+  /// 가구를 보관함에 넣는다.
+  DecorData storeFurniture(String roomId, String id) {
+    final layout = layoutOf(roomId);
+    return _with(roomId, layout.copyWith(stored: {...layout.stored, id}));
+  }
+
+  Map<String, dynamic> toJson() => {
+        'owned': owned.toList(),
+        'layouts': {for (final e in layouts.entries) e.key: e.value.toJson()},
+        'spent': spent,
       };
 
-  Map<String, dynamic> toJson() => {'owned': owned.toList(), 'placements': placements, 'spent': spent};
-
-  /// 모르는 소품·자리는 버린다.
+  /// 모르는 소품, 사지 않은 소품은 버린다.
   factory DecorData.fromJson(Map<String, dynamic> j) {
     final owned = <String>{
       for (final id in (j['owned'] as List? ?? const []))
         if (id is String && decorById(id) != null) id
     };
-    final placements = <String, Map<String, String>>{};
-    final raw = j['placements'];
+    final layouts = <String, RoomLayout>{};
+    final raw = j['layouts'];
     if (raw is Map) {
       for (final e in raw.entries) {
-        final slots = <String, String>{};
-        if (e.value is Map) {
-          for (final s in (e.value as Map).entries) {
-            final item = s.value is String ? decorById(s.value as String) : null;
-            if (item != null && owned.contains(item.id) && kDecorSlots[item.spot]!.contains(s.key)) {
-              slots[s.key as String] = item.id;
-            }
-          }
-        }
-        if (e.key is String) placements[e.key as String] = slots;
+        if (e.key is! String) continue;
+        final l = RoomLayout.fromJson(e.value);
+        layouts[e.key as String] =
+            l.copyWith(decor: {for (final d in l.decor.entries) if (owned.contains(d.key)) d.key: d.value});
       }
     }
     final spent = j['spent'];
-    return DecorData(owned: owned, placements: placements, spent: spent is int && spent > 0 ? spent : 0);
+    return DecorData(owned: owned, layouts: layouts, spent: spent is int && spent > 0 ? spent : 0);
   }
 }

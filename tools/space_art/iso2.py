@@ -31,7 +31,8 @@ class Scene:
 
 CUBE = [".TT.","TTTT","LLRR","LLRR",".LR."]
 
-def render(s, W, H, ox, oy, bg='#22344a', night=False, light=None):
+def render(s, W, H, ox, oy, bg='#22344a', night=False, light=None, raw=False):
+    """raw=True면 (색 목록, 물체 id 목록, 빛 번짐 목록)을 돌려준다."""
     img = [[hx(bg)]*W for _ in range(H)]
     ids = [[0]*W for _ in range(H)]
     glow = [[False]*W for _ in range(H)]
@@ -92,6 +93,10 @@ def render(s, W, H, ox, oy, bg='#22344a', night=False, light=None):
                 a=min(0.38,add[Y][X])
                 if a>0: res[Y][X]=mix(res[Y][X],(255,214,140),a)
         img=res
+    else:
+        add=[[0.0]*W for _ in range(H)]
+    if raw:
+        return img, ids, add
     im=Image.new('RGB',(W,H)); px=im.load()
     for Y in range(H):
         for X in range(W): px[X,Y]=img[Y][X]

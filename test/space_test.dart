@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:jeoduit/app.dart';
 import 'package:jeoduit/models/decor.dart';
+import 'package:jeoduit/models/layout.dart';
 import 'package:jeoduit/models/mission.dart';
 import 'package:jeoduit/models/mission_record.dart';
 import 'package:jeoduit/models/return_days.dart';
@@ -53,7 +54,20 @@ void main() {
       final art = kRoomArt[room.id];
       expect(art, isNotNull, reason: room.id);
       expect(room.lines.length, art!.stages, reason: room.id);
-      expect(art.buddySpots.length, art.stages, reason: room.id);
+      expect(art.shells.length, art.stages, reason: room.id);
+      for (final f in art.furniture) {
+        expect(f.unlock, lessThan(art.stages), reason: f.id);
+      }
+    }
+  });
+
+  test('처음 자리의 가구들은 서로 겹치지 않고 방 안에 있다', () {
+    for (final room in kSpaceRooms) {
+      final last = room.stages - 1;
+      final things = thingsIn(room.id, last, const DecorData());
+      for (final t in things) {
+        expect(fits(room.id, last, things, t, t.a, t.b), isTrue, reason: '${room.id} ${t.id}');
+      }
     }
   });
 
@@ -157,50 +171,106 @@ void main() {
     expect(isNightTime(DateTime(2026, 11, 7, 6)), isFalse);
   });
 
-  test('꾸미기: 코인이 있어야 사고, 벽 하나·바닥 둘에 놓고, 치우면 보관함으로', () {
+  test('꾸미기: 코인이 있어야 사고, 아무 칸에나 놓고, 다른 방으로 옮기고, 치우면 보관함으로', () {
     final clock = decorById('clock')!;
-    final poster = decorById('poster')!;
     final lamp = decorById('moodlamp')!;
     final cactus = decorById('cactus')!;
-    final books = decorById('books')!;
 
     var d = const DecorData();
     expect(d.buy(lamp, 30), same(d), reason: '40코인짜리는 30코인으로 못 산다');
-    d = d.buy(clock, 100).buy(poster, 100).buy(lamp, 100);
-    expect(d.spent, 90);
-    expect(d.available(100), 10);
+    d = d.buy(clock, 100).buy(lamp, 100);
+    expect(d.spent, 60);
+    expect(d.available(100), 40);
     expect(d.buy(clock, 100), same(d), reason: '이미 있는 건 다시 안 산다');
-    expect(d.buy(cactus, 100), same(d), reason: '남은 10코인으로는 못 산다');
+    expect(d.placeDecor('cactus', 'bedroom', 1, 1), same(d), reason: '안 산 건 놓을 수 없다');
+    expect(d.buy(cactus, 100).spent, 90);
 
-    d = d.place(clock, 'bedroom');
-    expect(d.slotsOf('bedroom'), {'wall': 'clock'});
-    d = d.place(poster, 'bedroom');
-    expect(d.slotsOf('bedroom'), {'wall': 'poster'}, reason: '벽은 하나뿐이라 시계는 보관함으로');
-    expect(d.roomOf('clock'), isNull);
-
-    d = d.place(lamp, 'bedroom');
-    expect(d.slotsOf('bedroom')['floor1'], 'moodlamp');
-    d = d.place(lamp, 'study');
+    d = d.placeDecor('moodlamp', 'bedroom', 20, 22);
+    expect(d.layoutOf('bedroom').decor['moodlamp'], (20, 22));
+    d = d.placeDecor('moodlamp', 'study', 5, 30);
     expect(d.roomOf('moodlamp'), 'study', reason: '다른 방으로 옮긴다');
-    expect(d.slotsOf('bedroom').containsValue('moodlamp'), isFalse);
+    expect(d.layoutOf('bedroom').decor.containsKey('moodlamp'), isFalse);
+    d = d.removeDecor('moodlamp');
+    expect(d.roomOf('moodlamp'), isNull);
+    expect(d.owned, contains('moodlamp'));
 
-    d = d.remove('poster');
-    expect(d.roomOf('poster'), isNull);
-    expect(d.owned, contains('poster'));
-    expect(d.place(books, 'study'), same(d), reason: '안 산 건 놓을 수 없다');
+    d = d.moveFurniture('bedroom', 'bed', 25, 2).storeFurniture('bedroom', 'rug');
+    expect(d.layoutOf('bedroom').furniture['bed'], (25, 2));
+    expect(d.layoutOf('bedroom').stored, {'rug'});
+    d = d.moveFurniture('bedroom', 'rug', 3, 3);
+    expect(d.layoutOf('bedroom').stored, isEmpty, reason: '옮기면 보관함에서 나온다');
 
+    d = d.placeDecor('clock', 'bedroom', 20, 10);
     final back = DecorData.fromJson(d.toJson());
     expect(back.owned, d.owned);
     expect(back.spent, d.spent);
-    expect(back.slotsOf('study'), d.slotsOf('study'));
-    expect(DecorData.fromJson({'owned': ['없는것', 'clock'], 'placements': {'bedroom': {'wall': '없는것', 'floor9': 'clock'}}, 'spent': -5}).spent, 0);
+    expect(back.layoutOf('bedroom').furniture, d.layoutOf('bedroom').furniture);
+    expect(back.layoutOf('bedroom').decor, {'clock': (20, 10)});
+    final broken = DecorData.fromJson({
+      'owned': ['없는것', 'clock'],
+      'layouts': {
+        'bedroom': {'f': {'bed': 'x'}, 'd': {'없는것': [1, 2], 'clock': [3, 4]}}
+      },
+      'spent': -5,
+    });
+    expect(broken.spent, 0);
+    expect(broken.owned, {'clock'});
+    expect(broken.layoutOf('bedroom').decor, {'clock': (3, 4)});
+    expect(broken.layoutOf('bedroom').furniture, isEmpty);
+  });
+
+  test('자리 검사: 방 밖이나 다른 가구와 겹치면 안 되고, 러그 위에는 올릴 수 있다', () {
+    const stage = 10;
+    final things = thingsIn('bedroom', stage, const DecorData());
+    final bed = things.firstWhere((t) => t.id == 'bed');
+    expect(fits('bedroom', stage, things, bed, -1, 14), isFalse);
+    expect(fits('bedroom', stage, things, bed, 35, 14), isFalse, reason: '오른쪽 벽 밖');
+    expect(fits('bedroom', stage, things, bed, 12, 0), isFalse, reason: '책상과 겹친다');
+
+    final lamp = decorThing('moodlamp', 0, 0)!;
+    final rug = things.firstWhere((t) => t.id == 'rug');
+    expect(fits('bedroom', stage, things, lamp, rug.a + 2, rug.b + 2), isTrue, reason: '러그 위');
+    expect(freeSpot('bedroom', stage, things, lamp), isNotNull);
+
+    final clock = decorThing('clock', 0, 0)!;
+    expect(fits('bedroom', stage, things, clock, 10, 24), isFalse, reason: '수납장 자리');
+    expect(fits('bedroom', stage, things, clock, 24, 12), isTrue);
+    expect(fits('bedroom', 6, thingsIn('bedroom', 6, const DecorData()), clock, 10, 24), isTrue,
+        reason: '수납장이 생기기 전');
+  });
+
+  test('앞뒤 순서: 화면 아래(앞)에 있는 것이 나중에 그려진다', () {
+    const back = FloorBox(0, 0, 5, 5);
+    const front = FloorBox(10, 10, 3, 3);
+    const right = FloorBox(10, 0, 4, 4); // 뒤쪽과 x로 떨어짐
+    final order = paintOrder([front, back, right]);
+    expect(order.indexOf(1), lessThan(order.indexOf(0)));
+    expect(order.indexOf(1), lessThan(order.indexOf(2)));
+    expect(order.indexOf(2), lessThan(order.indexOf(0)), reason: 'right는 front보다 y가 작다');
+    // 긴 침대 옆 작은 물건: 침대 오른쪽(x가 큼)에 붙은 물건이 앞
+    const bed = FloorBox(0, 14, 10, 17);
+    const box = FloorBox(10, 14, 3, 3);
+    expect(paintOrder([box, bed]), [1, 0]);
+  });
+
+  test('캐릭터는 막힌 자리를 피해 가까운 빈 칸에 선다', () {
+    final things = thingsIn('bedroom', 10, const DecorData());
+    final spot = buddySpot('bedroom', things);
+    for (final t in things) {
+      if (!t.wall && !t.flat) {
+        expect(t.overlaps(spot.$1 - 1, spot.$2 - 1, 3, 2), isFalse, reason: t.id);
+      }
+    }
+    final blocked = thingsIn('bedroom', 10, const DecorData().moveFurniture('bedroom', 'chair', 19, 24));
+    final moved = buddySpot('bedroom', blocked);
+    expect(moved, isNot((20, 25)));
   });
 
   test('침실은 상자를 풀고 나서(2단계)부터 꾸밀 수 있다', () {
     expect(canDecorate('bedroom', 1), isFalse);
     expect(canDecorate('bedroom', 2), isTrue);
     expect(canDecorate('study', 0), isTrue);
-    expect(decorAsset('bedroom', 'wall', 'clock', night: true), 'assets/space/decor/bedroom_wall_clock_n.png');
+    expect(thingsIn('bedroom', 1, const DecorData()), isEmpty, reason: '상자 단계엔 옮길 가구가 없다');
   });
 
   testWidgets('꾸미기에서 코인으로 소품을 사면 방에 놓이고 남은 코인이 줄어든다', (tester) async {
@@ -221,7 +291,23 @@ void main() {
     await tester.tap(buyClock);
     await tester.pumpAndSettle();
     expect(find.text('코인 10'), findsOneWidget);
-    expect(find.text('이 방에 놓여 있어요'), findsOneWidget);
+    // 산 소품은 바로 빈 자리에 놓이고 골라진 상태가 된다.
+    expect(find.text('벽시계'), findsOneWidget);
+    final placed = (await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'];
+    expect(placed, isNotNull);
+
+    // 한 칸 위로 옮기기
+    await tester.tap(find.byTooltip('위로'));
+    await tester.pumpAndSettle();
+    expect((await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'], (placed!.$1, placed.$2 + 1));
+
+    // 보관함에 넣었다가 다시 놓기
+    await tester.tap(find.text('보관함에'));
+    await tester.pumpAndSettle();
+    expect((await SpaceStore().load()).decor.roomOf('clock'), isNull);
+    await tester.tap(find.descendant(of: find.widgetWithText(ListTile, '벽시계'), matching: find.text('놓기')));
+    await tester.pumpAndSettle();
+    expect((await SpaceStore().load()).decor.roomOf('clock'), 'bedroom');
     // 40코인짜리 무드등은 못 산다.
     final lampButton = find.ancestor(
         of: find.descendant(of: find.widgetWithText(ListTile, '무드등'), matching: find.text('사기')),
@@ -231,7 +317,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(tester.widget<Text>(find.byKey(const Key('coins'))).data, '10');
-    expect((await SpaceStore().load()).decor.slotsOf('bedroom'), {'wall': 'clock'});
+    expect((await SpaceStore().load()).decor.roomOf('clock'), 'bedroom');
   });
 
   testWidgets('홈에는 내 공간과 미션만 있고 친구 챌린지는 챌린지 탭에 따로 있다', (tester) async {
