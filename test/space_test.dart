@@ -15,6 +15,7 @@ import 'package:jeoduit/models/space_art.dart';
 import 'package:jeoduit/services/record_repository.dart';
 import 'package:jeoduit/services/space_store.dart';
 import 'package:jeoduit/utils/photo.dart';
+import 'package:jeoduit/widgets/space_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 MissionRecord _record(String id, String missionId, DateTime completedAt, {String? photo}) {
@@ -200,8 +201,10 @@ void main() {
     d = d.moveFurniture('bedroom', 'rug', 3, 3);
     expect(d.layoutOf('bedroom').stored, isEmpty, reason: '옮기면 보관함에서 나온다');
 
-    d = d.placeDecor('clock', 'bedroom', 20, 10);
+    d = d.placeDecor('clock', 'bedroom', 20, 10).moveBuddy('bedroom', 12, 30);
     final back = DecorData.fromJson(d.toJson());
+    expect(back.layoutOf('bedroom').buddy, (12, 30));
+    expect(back.layoutOf('study').buddy, isNull);
     expect(back.owned, d.owned);
     expect(back.spent, d.spent);
     expect(back.layoutOf('bedroom').furniture, d.layoutOf('bedroom').furniture);
@@ -261,6 +264,7 @@ void main() {
         expect(t.overlaps(spot.$1 - 1, spot.$2 - 1, 3, 2), isFalse, reason: t.id);
       }
     }
+    expect(buddySpot('bedroom', things, prefer: (30, 22)), (30, 22), reason: '옮겨 둔 자리에 선다');
     final blocked = thingsIn('bedroom', 10, const DecorData().moveFurniture('bedroom', 'chair', 19, 24));
     final moved = buddySpot('bedroom', blocked);
     expect(moved, isNot((20, 25)));
@@ -296,12 +300,28 @@ void main() {
     final placed = (await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'];
     expect(placed, isNotNull);
 
-    // 한 칸 위로 옮기기
-    await tester.tap(find.byTooltip('위로'));
+    // 손가락으로 집어서 위로 끌면 그만큼 올라간다 (벽에서 한 칸 = 세로 2 도트 픽셀).
+    final room = find.byType(RoomPicture);
+    final origin = tester.getTopLeft(room);
+    final s = tester.getSize(room).width / kRoomArtWidth;
+    final (l, top, w, h) = decorThing('clock', placed!.$1, placed.$2)!.rect();
+    final grab = origin + Offset((l + w / 2) * s, (top + h / 2) * s);
+    await tester.dragFrom(grab, Offset(0, -10 * s));
     await tester.pumpAndSettle();
-    expect((await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'], (placed!.$1, placed.$2 + 1));
+    expect((await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'], (placed.$1, placed.$2 + 5));
 
-    // 보관함에 넣었다가 다시 놓기
+    // 캐릭터도 끌어서 옮긴다 (바닥에서 오른쪽 아래로 = x+).
+    final (bx, by) = buddySpot('bedroom', thingsIn('bedroom', 3, (await SpaceStore().load()).decor));
+    final (bl, bt, bw, bh) = buddyRect(bx, by);
+    await tester.dragFrom(origin + Offset((bl + bw / 2) * s, (bt + bh / 2) * s), Offset(8 * s, 4 * s));
+    await tester.pumpAndSettle();
+    expect((await SpaceStore().load()).decor.layoutOf('bedroom').buddy, (bx + 4, by));
+
+    // 시계를 다시 눌러 고르고, 보관함에 넣었다가 다시 놓기
+    final (l2, top2, w2, h2) = decorThing('clock', placed.$1, placed.$2 + 5)!.rect();
+    await tester.tapAt(origin + Offset((l2 + w2 / 2) * s, (top2 + h2 / 2) * s));
+    await tester.pumpAndSettle();
+    expect(find.text('벽시계'), findsOneWidget);
     await tester.tap(find.text('보관함에'));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.roomOf('clock'), isNull);
