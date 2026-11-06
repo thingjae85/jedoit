@@ -289,6 +289,8 @@ class _DecorScreenState extends State<DecorScreen> {
                           t.isDecor && !_canPlace ? '방이 조금 더 회복되면 놓을 수 있어요' : '보관함에 있어요',
                           style: const TextStyle(fontSize: 12)),
                       trailing: FilledButton.tonal(
+                        // 앱 기본 버튼은 가로를 꽉 채우므로, 목록 오른쪽에 들어가게 크기를 정한다.
+                        style: _tileButton,
                         onPressed: t.isDecor && !_canPlace ? null : () => _takeOut(t),
                         child: const Text('놓기'),
                       ),
@@ -305,6 +307,8 @@ class _DecorScreenState extends State<DecorScreen> {
                       subtitle: Text('${item.price} 코인 · ${item.spot == DecorSpot.wall ? '벽' : '바닥'}',
                           style: const TextStyle(fontSize: 12)),
                       trailing: FilledButton.tonal(
+                        // 앱 기본 버튼은 가로를 꽉 채우므로, 목록 오른쪽에 들어가게 크기를 정한다.
+                        style: _tileButton,
                         onPressed: _coins >= item.price ? () => _buy(item) : null,
                         child: const Text('사기'),
                       ),
@@ -324,6 +328,8 @@ class _DecorScreenState extends State<DecorScreen> {
       ),
     );
   }
+
+  static final _tileButton = FilledButton.styleFrom(minimumSize: const Size(64, 40));
 
   Widget _icon(IconData? icon) => Container(
         width: 40,
