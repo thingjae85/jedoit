@@ -161,26 +161,31 @@ bool fits(String roomId, int stage, List<PlacedThing> things, PlacedThing thing,
   return best;
 }
 
-/// 캐릭터가 서는 칸. 원래 자리가 막혀 있으면 가장 가까운 빈 칸. 캐릭터는 3×2칸을 차지한다.
-(int, int) buddySpot(String roomId, List<PlacedThing> things) {
-  final art = kRoomArt[roomId];
-  final px = art?.buddyX ?? kRoomCells ~/ 2;
-  final py = art?.buddyY ?? kRoomCells ~/ 2;
-  bool free(int x, int y) {
-    if (x < 2 || y < 2 || x > kRoomCells - 3 || y > kRoomCells - 2) return false;
-    for (final o in things) {
-      if (!o.wall && !o.flat && o.overlaps(x - 1, y - 1, 3, 2)) return false;
-    }
-    return true;
+/// 캐릭터를 (x, y)에 세울 수 있는지. 캐릭터는 (x-1, y-1)부터 3×2칸을 차지한다.
+bool buddyFits(List<PlacedThing> things, int x, int y) {
+  if (x < 2 || y < 2 || x > kRoomCells - 3 || y > kRoomCells - 2) return false;
+  for (final o in things) {
+    if (!o.wall && !o.flat && o.overlaps(x - 1, y - 1, 3, 2)) return false;
   }
+  return true;
+}
 
-  if (free(px, py)) return (px, py);
+/// 캐릭터 그림이 차지하는 사각형 (도트 픽셀): 왼쪽, 위, 너비, 높이.
+(int, int, int, int) buddyRect(int x, int y) =>
+    ((kRoomOriginX + (x - y) * 2 - 11).round(), (kRoomOriginY + x + y - kBuddyArtHeight).round(), kBuddyArtWidth.round(), kBuddyArtHeight.round());
+
+/// 캐릭터가 서는 칸: 옮겨 둔 자리([prefer]) 또는 방마다 정해 둔 자리.
+/// 그 자리가 막혀 있으면 가장 가까운 빈 칸.
+(int, int) buddySpot(String roomId, List<PlacedThing> things, {(int, int)? prefer}) {
+  final art = kRoomArt[roomId];
+  final (px, py) = prefer ?? (art?.buddyX ?? kRoomCells ~/ 2, art?.buddyY ?? kRoomCells ~/ 2);
+  if (buddyFits(things, px, py)) return (px, py);
   (int, int) best = (px, py);
   var bestDist = 1 << 30;
   for (var x = 0; x < kRoomCells; x++) {
     for (var y = 0; y < kRoomCells; y++) {
       final dist = (x - px) * (x - px) + (y - py) * (y - py);
-      if (dist < bestDist && free(x, y)) {
+      if (dist < bestDist && buddyFits(things, x, y)) {
         best = (x, y);
         bestDist = dist;
       }

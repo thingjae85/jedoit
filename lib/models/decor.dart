@@ -38,7 +38,7 @@ bool canDecorate(String roomId, int stage) => stage >= (kDecorMinStage[roomId] ?
 
 /// 방 하나의 배치. 위치는 바닥이면 (x, y), 벽이면 (y, z) 칸.
 class RoomLayout {
-  const RoomLayout({this.furniture = const {}, this.stored = const {}, this.decor = const {}});
+  const RoomLayout({this.furniture = const {}, this.stored = const {}, this.decor = const {}, this.buddy});
 
   /// 옮긴 가구의 위치. 없으면 처음 자리.
   final Map<String, (int, int)> furniture;
@@ -49,13 +49,27 @@ class RoomLayout {
   /// 이 방에 놓은 산 소품의 위치.
   final Map<String, (int, int)> decor;
 
-  RoomLayout copyWith({Map<String, (int, int)>? furniture, Set<String>? stored, Map<String, (int, int)>? decor}) =>
-      RoomLayout(furniture: furniture ?? this.furniture, stored: stored ?? this.stored, decor: decor ?? this.decor);
+  /// 캐릭터가 서는 칸. 없으면 방마다 정해 둔 자리.
+  final (int, int)? buddy;
+
+  RoomLayout copyWith({
+    Map<String, (int, int)>? furniture,
+    Set<String>? stored,
+    Map<String, (int, int)>? decor,
+    (int, int)? buddy,
+  }) =>
+      RoomLayout(
+        furniture: furniture ?? this.furniture,
+        stored: stored ?? this.stored,
+        decor: decor ?? this.decor,
+        buddy: buddy ?? this.buddy,
+      );
 
   Map<String, dynamic> toJson() => {
         'f': {for (final e in furniture.entries) e.key: [e.value.$1, e.value.$2]},
         's': stored.toList(),
         'd': {for (final e in decor.entries) e.key: [e.value.$1, e.value.$2]},
+        if (buddy != null) 'b': [buddy!.$1, buddy!.$2],
       };
 
   static Map<String, (int, int)> _positions(Object? raw) {
@@ -82,6 +96,7 @@ class RoomLayout {
             if (s is String) s
       },
       decor: _positions(raw['d']),
+      buddy: _positions({'b': raw['b']})['b'],
     );
   }
 }
@@ -150,6 +165,9 @@ class DecorData {
       layout.copyWith(furniture: {...layout.furniture, id: (x, y)}, stored: {...layout.stored}..remove(id)),
     );
   }
+
+  /// 캐릭터를 (x, y)에 세운다.
+  DecorData moveBuddy(String roomId, int x, int y) => _with(roomId, layoutOf(roomId).copyWith(buddy: (x, y)));
 
   /// 가구를 보관함에 넣는다.
   DecorData storeFurniture(String roomId, String id) {

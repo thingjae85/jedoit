@@ -21,6 +21,8 @@ class RoomPicture extends StatelessWidget {
     this.things,
     this.selectedKey,
     this.selectionValid = true,
+    this.buddyAt,
+    this.lifted = false,
   });
 
   final String roomId;
@@ -44,6 +46,15 @@ class RoomPicture extends StatelessWidget {
   final String? selectedKey;
   final bool selectionValid;
 
+  /// 옮기는 중인 캐릭터 자리. 없으면 [decor]에 저장된 자리.
+  final (int, int)? buddyAt;
+
+  /// 고른 물건을 손으로 들어 올린 것처럼 조금 띄워 그린다 (끄는 중).
+  final bool lifted;
+
+  /// 캐릭터를 가리키는 [selectedKey].
+  static const buddyKey = 'buddy';
+
   int get _stage {
     final art = kRoomArt[roomId]!;
     return stage < 0 ? 0 : (stage >= art.stages ? art.stages - 1 : stage);
@@ -57,15 +68,17 @@ class RoomPicture extends StatelessWidget {
     final walls = [for (final t in list) if (t.wall) t];
     final flats = [for (final t in list) if (!t.wall && t.flat) t]..sort((p, q) => (p.a + p.b).compareTo(q.a + q.b));
     final blockers = [for (final t in list) if (!t.wall && !t.flat) t];
-    final (bx, by) = buddySpot(roomId, list);
+    final (bx, by) = buddyAt ?? buddySpot(roomId, list, prefer: decor.layoutOf(roomId).buddy);
     final order = paintOrder([
       for (final t in blockers) FloorBox(t.a, t.b, t.w, t.d),
       if (showBuddy) FloorBox(bx - 1, by - 1, 3, 2),
     ]);
-    PlacedThing? selected;
+    _Footprint? selected;
     for (final t in list) {
-      if (t.key == selectedKey) selected = t;
+      if (t.key == selectedKey) selected = _Footprint(t.wall, t.a, t.b, t.w, t.d);
     }
+    if (selectedKey == buddyKey && showBuddy) selected = _Footprint(false, bx - 1, by - 1, 3, 2);
+    const lift = 3; // 들어 올린 높이 (도트 픽셀)
     final shell = art.shells[st];
     return AspectRatio(
       aspectRatio: kRoomArtWidth / kRoomArtHeight,
@@ -73,10 +86,11 @@ class RoomPicture extends StatelessWidget {
         final s = c.maxWidth / kRoomArtWidth;
         Widget sprite(PlacedThing t) {
           final (l, top, w, h) = t.rect(atNight: night);
+          final up = lifted && t.key == selectedKey ? lift : 0;
           return Positioned(
             key: ValueKey(t.key),
             left: l * s,
-            top: top * s,
+            top: (top - up) * s,
             width: w * s,
             height: h * s,
             child: Image.asset(night ? t.night.asset : t.day.asset,
@@ -107,9 +121,9 @@ class RoomPicture extends StatelessWidget {
                 sprite(blockers[i])
               else
                 Positioned(
-                  key: const ValueKey('buddy'),
+                  key: const ValueKey(buddyKey),
                   left: (kRoomOriginX + (bx - by) * 2 - 11) * s,
-                  top: (kRoomOriginY + bx + by - kBuddyArtHeight) * s,
+                  top: (kRoomOriginY + bx + by - kBuddyArtHeight - (lifted && selectedKey == buddyKey ? lift : 0)) * s,
                   width: kBuddyArtWidth * s,
                   height: kBuddyArtHeight * s,
                   child: Image.asset(buddy.asset, filterQuality: FilterQuality.none, fit: BoxFit.fill),
@@ -121,11 +135,21 @@ class RoomPicture extends StatelessWidget {
   }
 }
 
+/// 칸 위치: 바닥이면 (x, y, 너비, 깊이), 벽이면 (y, z, 너비, 높이).
+class _Footprint {
+  const _Footprint(this.wall, this.a, this.b, this.w, this.d);
+  final bool wall;
+  final int a;
+  final int b;
+  final int w;
+  final int d;
+}
+
 /// 고른 물건이 차지하는 칸: 바닥이면 마름모, 벽이면 비스듬한 사각형.
 class _FootprintPainter extends CustomPainter {
   _FootprintPainter(this.thing, this.scale, this.valid);
 
-  final PlacedThing thing;
+  final _Footprint thing;
   final double scale;
   final bool valid;
 
@@ -155,7 +179,7 @@ class _FootprintPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_FootprintPainter old) =>
-      old.thing.key != thing.key || old.thing.a != thing.a || old.thing.b != thing.b ||
+      old.thing.wall != thing.wall || old.thing.a != thing.a || old.thing.b != thing.b ||
       old.scale != scale || old.valid != valid;
 }
 
