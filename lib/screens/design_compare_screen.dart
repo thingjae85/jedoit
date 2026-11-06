@@ -70,12 +70,12 @@ class _ProgressSketch extends StatelessWidget {
           style: Theme.of(context).textTheme.headlineSmall,
         ),
         const SizedBox(height: 8),
-        LinearProgressIndicator(
+        const LinearProgressIndicator(
           value: DesignCompareScreen.done / DesignCompareScreen.total,
           minHeight: 12,
         ),
         const SizedBox(height: 8),
-        Text('목표 ${DesignCompareScreen.goal}회까지 ${DesignCompareScreen.goal - DesignCompareScreen.done}회 남음'),
+        const Text('목표 ${DesignCompareScreen.goal}회까지 ${DesignCompareScreen.goal - DesignCompareScreen.done}회 남음'),
       ],
     );
   }
@@ -116,7 +116,7 @@ class _DeskSketch extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Text('목표 ${DesignCompareScreen.goal}개까지 ${DesignCompareScreen.goal - DesignCompareScreen.done}개 남음'),
+        const Text('목표 ${DesignCompareScreen.goal}개까지 ${DesignCompareScreen.goal - DesignCompareScreen.done}개 남음'),
       ],
     );
   }

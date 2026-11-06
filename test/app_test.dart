@@ -17,6 +17,9 @@ MissionRecord _record(String id, String missionId, DateTime completedAt,
   );
 }
 
+/// 날마다 바뀌는 기본 미션 대신 테스트에서 쓰는 고정 미션.
+List<Mission> _fixed(DateTime _) => [missionById('water')!, missionById('cleanup')!, kDiscoveryMission];
+
 void _useTallScreen(WidgetTester tester) {
   tester.view.physicalSize = const Size(800, 1600);
   tester.view.devicePixelRatio = 1.0;
@@ -31,13 +34,45 @@ void main() {
   });
 
   // 1
-  test('기본 미션은 4개이고 정리 미션만 5분 타이머·챌린지 전환 대상이다', () {
-    expect(kMissions.length, 4);
-    expect(kMissions.first.id, 'cleanup');
+  test('기본 미션: 예전 4개 id는 그대로이고 정리 미션만 챌린지 전환 대상이다', () {
+    expect(kMissions.take(4).map((m) => m.id), ['cleanup', 'water', 'reading', 'walking']);
     expect(kMissions.first.timerMinutes, 5);
     expect(kMissions.where((m) => m.challengeReady).map((m) => m.id), ['cleanup']);
+    expect(kMissions.map((m) => m.id).toSet().length, kMissions.length);
     expect(missionById('water')?.title, '물 한 잔 마시기');
+    expect(missionById('discovery'), kDiscoveryMission);
+    expect(missionById('custom:1'), isNull);
     expect(missionById('없는-미션'), isNull);
+  });
+
+  test('홈 기본 미션은 날마다 몸·마음 하나, 공간 하나, 오늘의 발견', () {
+    final seen = <String>{};
+    for (var d = 0; d < 14; d++) {
+      final day = DateTime(2026, 11, 1 + d);
+      final daily = dailyMissions(day);
+      expect(daily.map((m) => m.kind), [MissionKind.care, MissionKind.space, MissionKind.discovery]);
+      expect(dailyMissions(day).map((m) => m.id), daily.map((m) => m.id), reason: '같은 날은 같은 미션');
+      seen.addAll(daily.map((m) => m.id));
+    }
+    expect(seen.length, greaterThan(6), reason: '날마다 돌아가며 나온다');
+  });
+
+  test('오늘의 발견: 다른 걸로 바꾸면 다른 주제가 나온다', () {
+    for (var d = 0; d < 30; d++) {
+      final day = DateTime(2026, 11, 1 + d);
+      expect(discoveryThemeFor(day, rerolled: true).id, isNot(discoveryThemeFor(day).id));
+    }
+  });
+
+  test('기록 이름: 기본 미션, 오늘의 발견 주제, 직접 만든 미션', () {
+    final now = DateTime(2026, 11, 5);
+    expect(recordTitle(_record('a', 'water', now)), '물 한 잔 마시기');
+    expect(
+        recordTitle(MissionRecord(id: 'b', missionId: 'discovery', startedAt: now, completedAt: now, theme: 'green')),
+        '오늘의 발견 · 초록색');
+    expect(
+        recordTitle(MissionRecord(id: 'c', missionId: 'custom:1', startedAt: now, completedAt: now, title: '영양제 먹기')),
+        '영양제 먹기');
   });
 
   // 2
@@ -50,6 +85,16 @@ void main() {
     expect(restored.startedAt, original.startedAt);
     expect(restored.completedAt, original.completedAt);
     expect(restored.memo, original.memo);
+
+    final withPhoto = MissionRecord(
+        id: 'p', missionId: 'discovery', startedAt: original.startedAt, completedAt: original.completedAt,
+        theme: 'green', photo: 'AAAA', title: null);
+    final back = MissionRecord.fromJson(withPhoto.toJson());
+    expect(back.theme, 'green');
+    expect(back.photo, 'AAAA');
+    expect(back.hasPhoto, isTrue);
+    expect(withPhoto.withoutPhoto().photo, isNull);
+    expect(withPhoto.withoutPhoto().theme, 'green');
   });
 
   // 3
@@ -94,14 +139,16 @@ void main() {
   });
 
   // 6
-  testWidgets('홈 화면에 미션 4개가 보이고 마이 탭에 로컬 저장 안내가 있다', (tester) async {
+  testWidgets('홈 화면에 오늘의 미션 3개와 내 공간이 보이고 마이 탭에 로컬 저장 안내가 있다', (tester) async {
     _useTallScreen(tester);
-    await tester.pumpWidget(JeoduitApp(repository: LocalRecordRepository()));
+    await tester.pumpWidget(JeoduitApp(repository: LocalRecordRepository(), missionsFor: _fixed));
     await tester.pumpAndSettle();
 
-    for (final m in kMissions) {
+    for (final m in _fixed(DateTime.now())) {
       expect(find.text(m.title), findsOneWidget);
     }
+    expect(find.text('하나만 해도 충분해요'), findsOneWidget);
+    expect(find.text('작은 침실'), findsOneWidget);
     expect(find.text('오늘 0번 완료'), findsOneWidget);
 
     await tester.tap(find.text('마이'));
@@ -110,44 +157,42 @@ void main() {
   });
 
   // 7
-  testWidgets('정리 미션: 시작 → 타이머 → 완료 체크·메모 → 저장', (tester) async {
+  testWidgets('정리 미션: 타이머는 원할 때만, 메모 남기고 했어요로 저장', (tester) async {
     _useTallScreen(tester);
     final repo = LocalRecordRepository();
-    await tester.pumpWidget(JeoduitApp(repository: repo));
+    await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('책상 한 구역 정리'));
     await tester.pumpAndSettle();
 
-    // 시작 전에는 저장 버튼이 없다.
-    expect(find.text('기록 저장'), findsNothing);
+    // 타이머를 켜지 않아도 바로 완료할 수 있다.
+    final doneFinder = find.widgetWithText(FilledButton, '했어요');
+    expect(tester.widget<FilledButton>(doneFinder).onPressed, isNotNull);
 
-    await tester.tap(find.text('시작하기'));
+    await tester.tap(find.text('타이머 켜기 (5분)'));
     await tester.pump();
     expect(find.text('05:00'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('04:59'), findsOneWidget);
 
-    // 체크 전에는 저장 버튼이 비활성이다.
-    final saveFinder = find.widgetWithText(FilledButton, '기록 저장');
-    expect(tester.widget<FilledButton>(saveFinder).onPressed, isNull);
-
-    await tester.tap(find.byType(CheckboxListTile));
-    await tester.pump();
     await tester.enterText(find.byType(TextField), '왼쪽 서랍 정리');
     await tester.pump();
-    expect(tester.widget<FilledButton>(saveFinder).onPressed, isNotNull);
 
-    await tester.tap(saveFinder);
+    await tester.tap(doneFinder);
     await tester.pumpAndSettle();
 
     final saved = await repo.loadAll();
     expect(saved.length, 1);
     expect(saved.first.missionId, 'cleanup');
     expect(saved.first.memo, '왼쪽 서랍 정리');
+    expect(saved.first.photo, isNull);
     expect(find.textContaining('기록을 이 기기에 저장했어요'), findsOneWidget);
+    expect(find.textContaining('+10 코인'), findsOneWidget);
     expect(find.text('오늘 1번 완료'), findsOneWidget);
+    // 첫 미션이면 침실에 햇빛이 들어온다.
+    expect(find.textContaining('창문으로 햇빛이 들어와요'), findsOneWidget);
   });
 
   // 8
@@ -158,7 +203,7 @@ void main() {
     await repo.add(_record('a', 'water', now));
     await repo.add(_record('b', 'cleanup', now, memo: '정리함'));
 
-    await tester.pumpWidget(JeoduitApp(repository: repo));
+    await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
     await tester.pumpAndSettle();
     // 기록 탭은 오늘 날짜가 선택된 달력으로 열린다.
     await tester.tap(find.text('기록'));
@@ -189,9 +234,10 @@ void main() {
     final repo = LocalRecordRepository();
     await repo.add(_record('mon', 'reading', monday, memo: '월요일 독서'));
 
-    await tester.pumpWidget(JeoduitApp(repository: repo));
+    await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('${monday.day}').first);
+    // 위쪽 코인 숫자와 겹칠 수 있어 아래쪽 이번 주 줄의 날짜를 누른다.
+    await tester.tap(find.text('${monday.day}').last);
     await tester.pumpAndSettle();
     expect(find.text('내 기록'), findsOneWidget);
     expect(find.text('월요일 독서'), findsOneWidget);
@@ -205,7 +251,7 @@ void main() {
     await repo.add(_record('old', 'reading', lastMonth, memo: '지난달 기록'));
     await repo.add(_record('new', 'water', now));
 
-    await tester.pumpWidget(JeoduitApp(repository: repo));
+    await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
     await tester.pumpAndSettle();
     await tester.tap(find.text('기록'));
     await tester.pumpAndSettle();
@@ -227,7 +273,7 @@ void main() {
     await repo.add(_record('yesterday', 'cleanup', DateTime(now.year, now.month, now.day).subtract(const Duration(minutes: 1))));
     await repo.add(_record('today1', 'water', now));
     await repo.add(_record('today2', 'water', now));
-    await tester.pumpWidget(JeoduitApp(repository: repo));
+    await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
     await tester.pumpAndSettle();
     expect(find.text('오늘 2번 완료'), findsOneWidget);
     expect(find.text('전체 기록 3개 보기'), findsOneWidget);
@@ -238,12 +284,12 @@ void main() {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(JeoduitApp(repository: LocalRecordRepository()));
+    await tester.pumpWidget(JeoduitApp(repository: LocalRecordRepository(), missionsFor: _fixed));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('책상 한 구역 정리'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('시작하기'));
+    await tester.tap(find.text('타이머 켜기 (5분)'));
     await tester.pump();
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
@@ -252,7 +298,7 @@ void main() {
   testWidgets('홈 기록 불러오기에 실패하면 다시 시도할 수 있다', (tester) async {
     _useTallScreen(tester);
     final repo = _FailingRepository();
-    await tester.pumpWidget(JeoduitApp(repository: repo));
+    await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
     await tester.pumpAndSettle();
     expect(find.text('기록을 불러오지 못했어요'), findsOneWidget);
     repo.failLoad = false;
@@ -264,20 +310,17 @@ void main() {
   testWidgets('저장에 실패하면 메모를 유지하고 재시도할 수 있다', (tester) async {
     _useTallScreen(tester);
     final repo = _FailingRepository()..failLoad = false;
-    await tester.pumpWidget(JeoduitApp(repository: repo));
+    await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
     await tester.pumpAndSettle();
     await tester.tap(find.text('물 한 잔 마시기'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('시작하기'));
-    await tester.pump();
-    await tester.tap(find.byType(CheckboxListTile));
     await tester.enterText(find.byType(TextField), '아침에 실천');
     await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, '기록 저장'));
+    await tester.tap(find.widgetWithText(FilledButton, '했어요'));
     await tester.pumpAndSettle();
     expect(find.text('저장하지 못했어요. 잠시 후 다시 시도해 주세요'), findsOneWidget);
     expect(find.text('아침에 실천'), findsOneWidget);
-    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '기록 저장')).onPressed, isNotNull);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '했어요')).onPressed, isNotNull);
   });
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jeoduit/app.dart';
+import 'package:jeoduit/models/mission.dart';
 import 'package:jeoduit/models/mission_record.dart';
 import 'package:jeoduit/services/account_service.dart';
 import 'package:jeoduit/screens/room_entry_screen.dart';
@@ -140,16 +141,14 @@ void main() {
 
     final drafts = DraftStore(storage: SessionStorage());
     final account = _FakeAccount(drafts);
-    await tester.pumpWidget(JeoduitApp(account: account));
+    await tester.pumpWidget(JeoduitApp(
+        account: account,
+        missionsFor: (_) => [missionById('water')!, missionById('cleanup')!, kDiscoveryMission]));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('물 한 잔 마시기'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('시작하기'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('실제로 했어요'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('기록 저장'));
+    await tester.tap(find.text('했어요'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('30분 안에 로그인하면'), findsOneWidget);
@@ -204,6 +203,10 @@ void main() {
     await tester.pumpWidget(JeoduitApp(account: account, rooms: _NoRooms(), drafts: drafts));
     await tester.pumpAndSettle();
 
+    // 친구 챌린지는 홈이 아니라 챌린지 탭에 있다.
+    expect(find.text('친구와 함께 챌린지'), findsNothing);
+    await tester.tap(find.text('챌린지'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('친구와 함께 챌린지'));
     await tester.pumpAndSettle();
     expect(find.text('어떻게 참여할까요?'), findsOneWidget);
@@ -223,6 +226,10 @@ void main() {
     await tester.pumpWidget(JeoduitApp(account: account, rooms: _NoRooms(), drafts: drafts));
     await tester.pumpAndSettle();
 
+    // 친구 챌린지는 홈이 아니라 챌린지 탭에 있다.
+    expect(find.text('친구와 함께 챌린지'), findsNothing);
+    await tester.tap(find.text('챌린지'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('친구와 함께 챌린지'));
     await tester.pumpAndSettle();
     await tester.tapAt(const Offset(5, 5)); // 바깥을 눌러 닫기

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../models/mission.dart';
@@ -178,7 +180,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
           children: [
             _Stat(label: '이번 달 완료', value: '${monthRecords.length}개'),
             const SizedBox(width: 10),
-            _Stat(label: '연속 실천', value: '${_streak(byDay, today)}일'),
+            // 연속 기록은 한 번 끊기면 0이 돼서 의욕을 꺾는다. 끊겨도 줄지 않는 '해낸 날'을 센다.
+            _Stat(label: '이번 달 해낸 날', value: '${monthRecords.map((r) => dayOf(r.completedAt)).toSet().length}일'),
             const SizedBox(width: 10),
             _Stat(label: '전체 기록', value: '${records.length}개'),
           ],
@@ -204,17 +207,6 @@ class _RecordsScreenState extends State<RecordsScreen> {
           _RecordTile(record: r, onDelete: _deleting ? null : () => _deleteOne(r)),
       ],
     );
-  }
-
-  /// 오늘(오늘 기록이 없으면 어제)부터 거꾸로 이어진 기록한 날 수.
-  static int _streak(Map<DateTime, List<MissionRecord>> byDay, DateTime today) {
-    var day = byDay.containsKey(today) ? today : today.subtract(const Duration(days: 1));
-    var count = 0;
-    while (byDay.containsKey(day)) {
-      count++;
-      day = DateTime(day.year, day.month, day.day - 1);
-    }
-    return count;
   }
 }
 
@@ -300,7 +292,7 @@ class _MonthGrid extends StatelessWidget {
           children: [
             DayBlob(
               count: missions,
-              full: missions >= kMissions.length,
+              full: missions >= kDailyMissionCount,
               today: isToday,
               future: day.isAfter(today),
               selected: day == selected,
@@ -328,19 +320,27 @@ class _RecordTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mission = missionById(record.missionId);
     final time = record.completedAt.toLocal();
+    final title = recordTitle(record);
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 52),
       child: Row(
         children: [
-          const CheckSquare(checked: true),
+          if (record.hasPhoto)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.memory(base64Decode(record.photo!),
+                  width: 40, height: 40, fit: BoxFit.cover, gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => const CheckSquare(checked: true)),
+            )
+          else
+            const CheckSquare(checked: true),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(mission?.title ?? '알 수 없는 미션', style: const TextStyle(fontSize: 15)),
+                Text(title, style: const TextStyle(fontSize: 15)),
                 if (record.memo.isNotEmpty)
                   Text(record.memo, style: const TextStyle(fontSize: 12, color: JdColors.faint)),
               ],

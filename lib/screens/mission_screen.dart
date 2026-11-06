@@ -1,25 +1,43 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/mission.dart';
 import '../models/mission_record.dart';
 import '../services/record_repository.dart';
 import '../theme.dart';
-import '../widgets/jd_widgets.dart';
 import '../utils/format.dart';
+import '../utils/photo.dart';
 
-/// 개인 미션 실행 화면: 시작 → 실제 활동(타이머) → 완료 체크·메모 → 저장.
-/// 저장에 성공하면 저장한 기록을 반환하며 닫힌다.
+/// 사진 한 장을 고른다. 고르지 않으면 null. 테스트에서 바꿔 끼운다.
+typedef PhotoPicker = Future<Uint8List?> Function();
+
+Future<Uint8List?> pickPhotoFromDevice() async {
+  final f = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1080, maxHeight: 1080);
+  return f == null ? null : await f.readAsBytes();
+}
+
+/// 혼자 하는 미션 화면. 미션을 증명하는 곳이 아니라 해낸 일을 남기는 곳이다.
+/// '했어요' 버튼만 눌러도 끝나고, 타이머·사진·메모는 원할 때만 쓴다.
+/// 저장에 성공하면 저장한 기록을 돌려주며 닫힌다.
 class MissionScreen extends StatefulWidget {
   const MissionScreen({
     super.key,
     required this.mission,
     required this.repository,
+    this.theme,
+    this.pickPhoto = pickPhotoFromDevice,
   });
 
   final Mission mission;
   final RecordRepository repository;
+
+  /// 오늘의 발견 주제.
+  final DiscoveryTheme? theme;
+  final PhotoPicker pickPhoto;
 
   @override
   State<MissionScreen> createState() => _MissionScreenState();
@@ -29,13 +47,13 @@ class _MissionScreenState extends State<MissionScreen> {
   static const int memoMaxLength = 200;
 
   final TextEditingController _memoController = TextEditingController();
+  final DateTime _openedAt = DateTime.now();
   Timer? _timer;
-  DateTime? _startedAt;
   Duration? _remaining;
-  bool _checked = false;
+  String? _photo; // base64 JPEG
+  bool _pickingPhoto = false;
   bool _saving = false;
 
-  bool get _started => _startedAt != null;
   bool get _timeUp => _remaining != null && _remaining! <= Duration.zero;
 
   @override
@@ -45,39 +63,58 @@ class _MissionScreenState extends State<MissionScreen> {
     super.dispose();
   }
 
-  void _start() {
+  void _startTimer() {
     final minutes = widget.mission.timerMinutes;
-    setState(() {
-      _startedAt = DateTime.now();
-      _remaining = minutes == null ? null : Duration(minutes: minutes);
+    if (minutes == null) return;
+    _timer?.cancel();
+    setState(() => _remaining = Duration(minutes: minutes));
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      final left = _remaining;
+      if (left == null || !mounted) return;
+      final next = left - const Duration(seconds: 1);
+      if (next <= Duration.zero) {
+        timer.cancel();
+        setState(() => _remaining = Duration.zero);
+      } else {
+        setState(() => _remaining = next);
+      }
     });
-    if (minutes != null) {
-      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        final left = _remaining;
-        if (left == null) return;
-        final next = left - const Duration(seconds: 1);
-        if (next <= Duration.zero) {
-          timer.cancel();
-          setState(() => _remaining = Duration.zero);
-        } else {
-          setState(() => _remaining = next);
-        }
-      });
+  }
+
+  Future<void> _addPhoto() async {
+    if (_pickingPhoto) return;
+    setState(() => _pickingPhoto = true);
+    try {
+      final bytes = await widget.pickPhoto();
+      if (bytes == null || !mounted) return;
+      final photo = makeKeepsakePhoto(bytes);
+      if (mounted) setState(() => _photo = photo);
+    } on PhotoException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('사진을 불러오지 못했어요')));
+      }
+    } finally {
+      if (mounted) setState(() => _pickingPhoto = false);
     }
   }
 
   Future<void> _save() async {
-    final startedAt = _startedAt;
-    if (startedAt == null || !_checked || _saving) return;
+    if (_saving) return;
     setState(() => _saving = true);
 
+    final mission = widget.mission;
     final now = DateTime.now();
     final record = MissionRecord(
-      id: '${widget.mission.id}-${now.microsecondsSinceEpoch}',
-      missionId: widget.mission.id,
-      startedAt: startedAt,
+      id: '${mission.id}-${now.microsecondsSinceEpoch}',
+      missionId: mission.id,
+      startedAt: _openedAt,
       completedAt: now,
       memo: _memoController.text.trim(),
+      title: mission.kind == MissionKind.custom ? mission.title : null,
+      theme: widget.theme?.id,
+      photo: _photo,
     );
 
     try {
@@ -97,8 +134,9 @@ class _MissionScreenState extends State<MissionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final mission = widget.mission;
+    final theme = widget.theme;
+    final discovery = mission.kind == MissionKind.discovery;
 
     return Scaffold(
       appBar: AppBar(title: Text(mission.title)),
@@ -118,38 +156,34 @@ class _MissionScreenState extends State<MissionScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const CategoryChip.solo(label: '혼자 미션'),
-                    const SizedBox(height: 6),
-                    Text(mission.description, style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
+                    if (discovery && theme != null) ...[
+                      Text('오늘의 주제: ${theme.title}',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text(theme.hint, style: const TextStyle(fontSize: 14, color: JdColors.subtle)),
+                    ] else
+                      Text(mission.description, style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              _Step(number: 1, label: '시작', active: !_started, done: _started),
-              const Expanded(child: Divider(indent: 8, endIndent: 8)),
-              _Step(number: 2, label: '실천하고 기록', active: _started, done: false),
-            ],
-          ),
-          const SizedBox(height: 24),
-          if (!_started)
-            FilledButton.icon(
-              onPressed: _start,
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('시작하기'),
-            )
-          else ...[
-            if (_remaining != null)
+          if (mission.timerMinutes != null) ...[
+            const SizedBox(height: 20),
+            if (_remaining == null)
+              OutlinedButton.icon(
+                onPressed: _startTimer,
+                icon: const Icon(Icons.timer_outlined),
+                label: Text('타이머 켜기 (${mission.timerMinutes}분)'),
+              )
+            else
               Container(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
                 decoration: BoxDecoration(color: JdColors.soloTint, borderRadius: BorderRadius.circular(20)),
                 child: Column(
                   children: [
                     _TimerDisplay(remaining: _remaining!),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
@@ -158,46 +192,61 @@ class _MissionScreenState extends State<MissionScreen> {
                         backgroundColor: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    const Text('5분은 권장 시간이에요.\n먼저 끝나면 바로 기록해도 돼요.',
-                        textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: JdColors.soloText)),
+                    const SizedBox(height: 10),
+                    Text(
+                      _timeUp ? '시간이 끝났어요. 수고했어요.' : '먼저 끝나면 바로 완료해도 돼요.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13, color: JdColors.soloText),
+                    ),
                   ],
                 ),
               ),
-            if (_timeUp)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  '시간이 끝났어요. 마무리하고 기록을 남겨요.',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ),
-            const SizedBox(height: 16),
-            CheckboxListTile(
-              value: _checked,
-              onChanged: _saving ? null : (v) => setState(() => _checked = v ?? false),
-              title: const Text('실제로 했어요'),
-              controlAffinity: ListTileControlAffinity.leading,
-              contentPadding: EdgeInsets.zero,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _memoController,
-              enabled: !_saving,
-              maxLength: memoMaxLength,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: '메모 (선택)',
-                hintText: '어땠는지 한 줄 남겨 보세요',
-              ),
-            ),
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: (_checked && !_saving) ? _save : null,
-              child: Text(_saving ? '저장 중...' : '기록 저장'),
-            ),
           ],
+          const SizedBox(height: 24),
+          const Text('남기고 싶으면 (선택)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          const Text('사진과 메모는 나만 봐요. 사진은 방 벽 액자에 걸려요.',
+              style: TextStyle(fontSize: 12, color: JdColors.subtle)),
+          const SizedBox(height: 12),
+          if (_photo == null)
+            OutlinedButton.icon(
+              onPressed: _saving || _pickingPhoto ? null : _addPhoto,
+              icon: const Icon(Icons.photo_camera_outlined),
+              label: Text(_pickingPhoto ? '사진 불러오는 중...' : (discovery ? '발견한 거 찍기' : '사진 남기기')),
+            )
+          else
+            Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(base64Decode(_photo!), width: 88, height: 88, fit: BoxFit.cover),
+                ),
+                const SizedBox(width: 12),
+                TextButton(
+                  onPressed: _saving ? null : () => setState(() => _photo = null),
+                  child: const Text('사진 빼기'),
+                ),
+              ],
+            ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _memoController,
+            enabled: !_saving,
+            maxLength: memoMaxLength,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: '메모 (선택)',
+              hintText: '어땠는지 한 줄 남겨 보세요',
+            ),
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: Text(_saving ? '저장 중...' : '했어요'),
+          ),
+          const SizedBox(height: 8),
+          const Text('안 남겨도 완료돼요.',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: JdColors.faint)),
         ],
       ),
     );
@@ -218,43 +267,6 @@ class _TimerDisplay extends StatelessWidget {
         style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w800, color: JdColors.soloText,
             fontFeatures: [FontFeature.tabularFigures()]),
       ),
-    );
-  }
-}
-
-/// 미션 단계 표시: 번호 동그라미와 이름.
-class _Step extends StatelessWidget {
-  const _Step({required this.number, required this.label, required this.active, required this.done});
-
-  final int number;
-  final String label;
-  final bool active;
-  final bool done;
-
-  @override
-  Widget build(BuildContext context) {
-    final on = active || done;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 24,
-          height: 24,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(color: on ? JdColors.solo : JdColors.empty, shape: BoxShape.circle),
-          child: done
-              ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
-              : Text('$number',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: on ? Colors.white : JdColors.faint)),
-        ),
-        const SizedBox(width: 6),
-        Text(label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: active ? FontWeight.w700 : FontWeight.w400,
-              color: active ? JdColors.ink : JdColors.faint,
-            )),
-      ],
     );
   }
 }
