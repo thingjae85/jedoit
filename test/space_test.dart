@@ -16,6 +16,7 @@ import 'package:jeoduit/services/record_repository.dart';
 import 'package:jeoduit/services/space_store.dart';
 import 'package:jeoduit/utils/photo.dart';
 import 'package:jeoduit/widgets/space_view.dart';
+import 'package:jeoduit/widgets/pixel_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 MissionRecord _record(String id, String missionId, DateTime completedAt, {String? photo}) {
@@ -109,7 +110,7 @@ void main() {
   });
 
   test('하나만 보기: 고정한 방이 있으면 그 방, 없으면 가장 최근에 바뀐 방', () {
-    final s = SpaceState.of(7); // 7번째에 책 읽는 방이 자란다
+    final s = SpaceState.of(7); // 7번째에 방2가 자란다
     expect(s.shownRoom(null), 'study');
     expect(s.shownRoom('bedroom'), 'bedroom');
     expect(SpaceState.of(2).shownRoom('study'), 'bedroom', reason: '안 열린 방은 고정해도 무시');
@@ -173,6 +174,8 @@ void main() {
   });
 
   test('꾸미기: 코인이 있어야 사고, 아무 칸에나 놓고, 다른 방으로 옮기고, 치우면 보관함으로', () {
+    shopIsFree = false;
+    addTearDown(() => shopIsFree = true);
     final clock = decorById('clock')!;
     final lamp = decorById('moodlamp')!;
     final cactus = decorById('cactus')!;
@@ -278,6 +281,8 @@ void main() {
   });
 
   testWidgets('꾸미기에서 코인으로 소품을 사면 방에 놓이고 남은 코인이 줄어든다', (tester) async {
+    shopIsFree = false;
+    addTearDown(() => shopIsFree = true);
     _useTallScreen(tester);
     final repo = LocalRecordRepository();
     final now = DateTime.now();
@@ -291,6 +296,8 @@ void main() {
     await tester.tap(find.text('꾸미기'));
     await tester.pumpAndSettle();
     expect(find.text('코인 30'), findsOneWidget);
+    await tester.tap(find.text('벽 장식'));
+    await tester.pumpAndSettle();
     final buyClock = find.descendant(of: find.byKey(const ValueKey('shop-clock')), matching: find.text('사기'));
     await tester.tap(buyClock);
     await tester.pumpAndSettle();
@@ -328,11 +335,13 @@ void main() {
     await tester.tap(find.descendant(of: find.byKey(const ValueKey('stored-d:clock')), matching: find.text('놓기')));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.roomOf('clock'), 'bedroom');
-    // 40코인짜리 무드등은 못 산다.
+    // 40코인짜리 무드등은 못 산다 (가구 탭).
+    await tester.tap(find.text('가구'));
+    await tester.pumpAndSettle();
     final lampButton = find.ancestor(
         of: find.descendant(of: find.byKey(const ValueKey('shop-moodlamp')), matching: find.text('사기')),
-        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton));
-    expect(tester.widget<ButtonStyleButton>(lampButton).onPressed, isNull);
+        matching: find.byType(GameButton));
+    expect(tester.widget<GameButton>(lampButton).onTap, isNull);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -345,14 +354,14 @@ void main() {
     await tester.pumpWidget(JeoduitApp(repository: LocalRecordRepository(), missionsFor: _fixed));
     await tester.pumpAndSettle();
 
-    expect(find.text('작은 침실'), findsOneWidget);
+    expect(find.text('방1'), findsOneWidget);
     expect(find.text('하나만 해도 충분해요'), findsOneWidget);
     expect(find.text('친구와 챌린지'), findsNothing);
 
     await tester.tap(find.text('챌린지'));
     await tester.pumpAndSettle();
     expect(find.text('친구와 챌린지'), findsOneWidget);
-    expect(find.text('작은 침실'), findsNothing);
+    expect(find.text('방1'), findsNothing);
   });
 
   testWidgets('벌집 보기에서는 안 열린 칸이 닫힌 문으로 보이고, 방을 누르면 그 방이 고정된다', (tester) async {
@@ -366,7 +375,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 다섯 번 했으면 새 방이 열려 있고, 가장 최근에 바뀐 그 방이 보인다.
-    expect(find.text('책 읽는 방'), findsOneWidget);
+    expect(find.text('방2'), findsOneWidget);
 
     await tester.tap(find.byTooltip('벌집 보기'));
     await tester.pumpAndSettle();
@@ -376,7 +385,7 @@ void main() {
     // 아래 가운데 칸(침실)을 누른다.
     await tester.tapAt(_bottomCell(tester));
     await tester.pumpAndSettle();
-    expect(find.text('작은 침실'), findsOneWidget);
+    expect(find.text('방1'), findsOneWidget);
     expect(find.byTooltip('고정 풀기'), findsOneWidget);
     expect((await SpaceStore().load()).pinnedRoom, 'bedroom');
   });
@@ -471,6 +480,99 @@ void main() {
     await tester.tap(find.text('간직하기'));
     await tester.pumpAndSettle();
     expect(find.text('편지가 왔어요'), findsNothing);
+  });
+
+  test('벽지·바닥: 사서 방마다 바르고, 저장했다 다시 읽어도 그대로다', () {
+    final mint = kWallpapers.firstWhere((w) => w.id == 'mint');
+    final tile = kFloors.firstWhere((f) => f.id == 'tile');
+    expect(mint.price, 0, reason: '시험 기간에는 0코인');
+    var d = const DecorData();
+    expect(d.applySurface('bedroom', mint), same(d), reason: '안 산 건 못 바른다');
+    d = d.buySurface(mint, 0).applySurface('bedroom', mint).buySurface(tile, 0).applySurface('study', tile);
+    expect(d.layoutOf('bedroom').wallKey, 'wall_mint');
+    expect(d.layoutOf('bedroom').floorKey, 'floor_basic');
+    expect(d.layoutOf('study').floorKey, 'floor_tile');
+    d = d.applySurface('bedroom', kWallpapers.first);
+    expect(d.layoutOf('bedroom').wallKey, 'wall_basic', reason: '처음 벽지는 언제든 다시 바를 수 있다');
+    d = d.applySurface('bedroom', mint);
+    final back = DecorData.fromJson(d.toJson());
+    expect(back.layoutOf('bedroom').wallKey, 'wall_mint');
+    expect(back.layoutOf('study').floorKey, 'floor_tile');
+    expect(back.owned, containsAll(['wall_mint', 'floor_tile']));
+    final broken = DecorData.fromJson({
+      'owned': ['wall_없는것'],
+      'layouts': {
+        'bedroom': {'w': 'wall_rose', 'fl': 'floor_없는것'}
+      },
+    });
+    expect(broken.layoutOf('bedroom').wallKey, 'wall_basic', reason: '안 산 벽지는 버린다');
+    expect(broken.layoutOf('bedroom').floorKey, 'floor_basic');
+    for (final room in kSpaceRooms) {
+      for (final s in [...kWallpapers, ...kFloors]) {
+        expect(kRoomArt[room.id]!.surfaces[s.key], isNotNull, reason: '${room.id} ${s.key} 그림');
+      }
+    }
+  });
+
+  test('방 이름: 처음엔 방1·방2, 바꾸면 저장되고 비우면 처음 이름으로', () {
+    var d = const DecorData();
+    expect(d.roomName('bedroom'), '방1');
+    expect(d.roomName('study'), '방2');
+    d = d.rename('bedroom', '  내 작업실  ');
+    expect(d.roomName('bedroom'), '내 작업실');
+    expect(DecorData.fromJson(d.toJson()).roomName('bedroom'), '내 작업실');
+    expect(d.rename('bedroom', '열한글자가넘는아주긴이름').roomName('bedroom').length, roomNameMax);
+    expect(d.rename('bedroom', '   ').roomName('bedroom'), '방1');
+    expect(subjectParticle('방1'), '이');
+    expect(subjectParticle('방2'), '가');
+    expect(objectParticle('크림 벽지'), '를');
+    expect(objectParticle('벽돌'), '을');
+  });
+
+  testWidgets('홈에서 방 이름 옆 연필을 누르면 이름을 바꿀 수 있다', (tester) async {
+    _useTallScreen(tester);
+    await tester.pumpWidget(JeoduitApp(repository: LocalRecordRepository(), missionsFor: _fixed));
+    await tester.pumpAndSettle();
+    expect(find.text('방1'), findsOneWidget);
+    await tester.tap(find.byType(RoomNameButton));
+    await tester.pumpAndSettle();
+    expect(find.text('방 이름 바꾸기'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('roomNameField')), '햇살 방');
+    await tester.tap(find.text('바꾸기'));
+    await tester.pumpAndSettle();
+    expect(find.text('햇살 방'), findsOneWidget);
+    expect((await SpaceStore().load()).decor.roomName('bedroom'), '햇살 방');
+  });
+
+  testWidgets('꾸미기 탭: 벽지를 0코인에 사서 바르면 방 벽이 바뀌고 캐릭터 탭에서 캐릭터를 고른다', (tester) async {
+    _useTallScreen(tester);
+    final repo = LocalRecordRepository();
+    final now = DateTime.now();
+    for (var i = 0; i < 3; i++) {
+      await repo.add(_record('r$i', 'water', now.subtract(Duration(minutes: i))));
+    }
+    await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('꾸미기'));
+    await tester.pumpAndSettle();
+    expect(find.text('벽지·바닥'), findsOneWidget);
+    final buyMint = find.descendant(of: find.byKey(const ValueKey('surface-wall_mint')), matching: find.text('사기'));
+    await tester.ensureVisible(buyMint);
+    await tester.tap(buyMint);
+    await tester.pumpAndSettle();
+    expect(find.text('코인 30'), findsOneWidget, reason: '시험 기간이라 코인이 그대로');
+    expect((await SpaceStore().load()).decor.layoutOf('bedroom').wallKey, 'wall_mint');
+    expect(
+      find.descendant(of: find.byType(RoomPicture), matching: find.byWidgetPredicate(
+          (w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName.contains('wall_mint'))),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('캐릭터'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byKey(const ValueKey('buddy-hamster')), matching: find.text('함께하기')));
+    await tester.pumpAndSettle();
+    expect((await SpaceStore().load()).buddy, 'hamster');
   });
 }
 

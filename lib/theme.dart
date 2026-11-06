@@ -32,6 +32,14 @@ abstract final class JdColors {
   static const roomNavy = Color(0xFF22344A);
   static const roomNavyDeep = Color(0xFF172534);
   static const cream = Color(0xFFFFF8EA);
+
+  /// 게임 화면처럼 판과 버튼을 두르는 짙은 갈색 테두리.
+  static const outline = Color(0xFF4A3527);
+
+  /// 버튼 아래 두께(눌리는 턱) 색.
+  static const woodDeep = Color(0xFFA2693A);
+  static const leafLip = Color(0xFF2B6847);
+  static const creamLip = Color(0xFFE2CFAE);
   static const empty = Color(0xFFF1F2F4);
   static const box = Color(0xFFCDD2D7);
   static const panel = Color(0xFFF2ECE0);
@@ -70,7 +78,7 @@ ThemeData buildTheme() {
       centerTitle: false,
       elevation: 0,
       scrolledUnderElevation: 0,
-      titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: JdColors.ink),
+      titleTextStyle: TextStyle(fontFamily: kGameFont, fontSize: 18, fontWeight: FontWeight.w700, color: JdColors.ink),
     ),
     cardTheme: CardThemeData(
       color: JdColors.panel,
@@ -82,7 +90,7 @@ ThemeData buildTheme() {
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(52),
         shape: rounded,
-        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        textStyle: const TextStyle(fontFamily: kGameFont, fontSize: 16, fontWeight: FontWeight.w700),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -104,8 +112,9 @@ ThemeData buildTheme() {
       indicatorShape: const PixelBorder(step: 3, steps: 2),
       height: 64,
       labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
+            fontFamily: kGameFont,
             fontSize: 12,
-            fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w400,
+            fontWeight: FontWeight.w700,
             color: states.contains(WidgetState.selected) ? JdColors.ink : JdColors.faint,
           )),
     ),

@@ -340,7 +340,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _reaction = buddyReaction(mission, withPhoto: saved.hasPhoto, seed: count);
       final changes = [
-        if (event != null && !event.opensRoom) '${spaceRoomById(event.roomId)?.name ?? ''} · ${event.line}',
+        if (event != null && !event.opensRoom) '${_prefs.decor.roomName(event.roomId)} · ${event.line}',
         if (saved.hasPhoto) '사진이 벽 액자에 걸렸어요',
       ];
       _change = changes.isEmpty ? null : changes.join('\n');
@@ -366,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 새 방 문이 열리는 순간. 미리 알려 주지 않았으니 깜짝 선물처럼 보여 준다.
   Future<void> _showNewRoom(SpaceEvent event) {
-    final room = spaceRoomById(event.roomId);
+    final name = _prefs.decor.roomName(event.roomId);
     return showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -379,7 +379,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: RoomPicture(roomId: event.roomId, stage: 0, buddy: buddyById(_prefs.buddy)),
             ),
             const SizedBox(height: 12),
-            Text('${room?.name ?? '새 방'}이 생겼어요.\n천천히 채워 가요.', textAlign: TextAlign.center),
+            Text('$name${subjectParticle(name)} 생겼어요.\n이름은 연필을 눌러 바꿀 수 있어요.', textAlign: TextAlign.center),
           ],
         ),
         actions: [
@@ -406,6 +406,14 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadPrefs();
   }
 
+  Future<void> _renameRoom(String roomId) async {
+    final name = await showRoomNameDialog(context, current: _prefs.decor.roomName(roomId), max: roomNameMax);
+    if (name == null || !mounted) return;
+    final decor = _prefs.decor.rename(roomId, name);
+    setState(() => _prefs = _copyPrefs(decor: decor));
+    await _space.saveDecor(decor);
+  }
+
   Future<void> _setHiveView(bool hive) async {
     setState(() => _prefs = _copyPrefs(hiveView: hive));
     await _space.setHiveView(hive);
@@ -418,7 +426,8 @@ class _HomeScreenState extends State<HomeScreen> {
     await _space.setHiveView(false);
   }
 
-  SpacePrefs _copyPrefs({String? pinnedRoom, bool clearPinned = false, bool? hiveView, String? buddy}) {
+  SpacePrefs _copyPrefs(
+      {String? pinnedRoom, bool clearPinned = false, bool? hiveView, String? buddy, DecorData? decor}) {
     final p = _prefs;
     return SpacePrefs(
       pinnedRoom: clearPinned ? null : (pinnedRoom ?? p.pinnedRoom),
@@ -427,7 +436,7 @@ class _HomeScreenState extends State<HomeScreen> {
       customMissions: p.customMissions,
       rerolledOn: p.rerolledOn,
       letters: p.letters,
-      decor: p.decor,
+      decor: decor ?? p.decor,
     );
   }
 
@@ -652,17 +661,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text('${today.month}월 ${today.day}일 ${_weekdays[today.weekday - 1]}요일',
                         style: const TextStyle(fontSize: 12, color: JdColors.subtle, letterSpacing: 0.2)),
                     const SizedBox(height: 2),
-                    const Text('저두잇',
-                        style: TextStyle(
-                            fontSize: 24,
-                            height: 1.15,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -1.0,
-                            color: JdColors.ink)),
+                    Text('저두잇', style: gameText(size: 24, height: 1.2)),
                   ],
                 ),
               ),
-              _CoinChip(coins: _prefs.decor.available(state.coins)),
+              CoinCounter(coins: _prefs.decor.available(state.coins), textKey: const Key('coins')),
             ],
           ),
           const SizedBox(height: 14),
@@ -681,6 +684,7 @@ class _HomeScreenState extends State<HomeScreen> {
             night: night,
             decor: _prefs.decor,
             onDecorate: () => _openDecor(state, shown, night),
+            onRename: () => _renameRoom(shown),
             change: _change,
             letter: letters.isEmpty ? null : letters.first,
             onToggleView: _setHiveView,
@@ -849,37 +853,6 @@ class _WelcomeBack extends StatelessWidget {
   }
 }
 
-/// 미션을 하면 항상 받는 코인. 꾸미기에 쓴다.
-class _CoinChip extends StatelessWidget {
-  const _CoinChip({required this.coins});
-
-  final int coins;
-
-  @override
-  Widget build(BuildContext context) {
-    return PixelPanel(
-      color: JdColors.paperDeep,
-      border: JdColors.seam,
-      step: 2,
-      padding: const EdgeInsets.fromLTRB(9, 6, 11, 6),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const PixelCoin(size: 14),
-          const SizedBox(width: 6),
-          Text('$coins',
-              key: const Key('coins'),
-              style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: JdColors.woodText,
-                  fontFeatures: [FontFeature.tabularFigures()])),
-        ],
-      ),
-    );
-  }
-}
-
 /// 방 카드 위의 작은 도트 버튼 판.
 class _CardButton extends StatelessWidget {
   const _CardButton({required this.child, this.onTap, this.light = false, this.padding});
@@ -930,6 +903,7 @@ class _RoomCard extends StatelessWidget {
     required this.night,
     required this.decor,
     required this.onDecorate,
+    required this.onRename,
   });
 
   final SpaceState state;
@@ -949,16 +923,15 @@ class _RoomCard extends StatelessWidget {
   final bool night;
   final DecorData decor;
   final VoidCallback onDecorate;
-
-  static const _label = TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.1);
+  final VoidCallback onRename;
 
   @override
   Widget build(BuildContext context) {
-    final room = spaceRoomById(shownRoom);
     final bg = night ? JdColors.roomNavyDeep : JdColors.roomNavy;
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: ShapeDecoration(color: bg, shape: const PixelBorder(step: 4, steps: 2)),
+    return GamePanel(
+      color: bg,
+      lip: JdColors.roomNavyDeep,
+      step: 4,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -968,8 +941,9 @@ class _RoomCard extends StatelessWidget {
             child: Row(
               children: [
                 Flexible(
-                  child: Text(hiveView ? '내 공간' : (room?.name ?? ''),
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: _label.copyWith(fontSize: 14)),
+                  child: hiveView
+                      ? Text('내 공간', style: gameText(size: 14, color: Colors.white))
+                      : RoomNameButton(name: decor.roomName(shownRoom), onDark: true, size: 14, onTap: onRename),
                 ),
                 if (!hiveView && pinned) ...[
                   const SizedBox(width: 4),
@@ -986,18 +960,11 @@ class _RoomCard extends StatelessWidget {
                 ],
                 const Spacer(),
                 if (!hiveView) ...[
-                  _CardButton(
-                    light: true,
+                  GameButton(
+                    small: true,
+                    label: '꾸미기',
+                    icon: TabGlyphs.furniture(size: 12),
                     onTap: onDecorate,
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.chair_outlined, size: 14, color: JdColors.woodText),
-                        SizedBox(width: 4),
-                        Text('꾸미기',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: JdColors.woodText)),
-                      ],
-                    ),
                   ),
                   const SizedBox(width: 6),
                 ],
@@ -1096,20 +1063,13 @@ class _BuddyBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const shape = PixelBorder(step: 3, steps: 1);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    const shape = PixelBorder(step: 3, steps: 1, side: BorderSide(color: JdColors.outline, width: 2));
+    return Stack(
+      clipBehavior: Clip.none,
       children: [
-        // 꼬리: 도트 계단 삼각형
-        const Padding(
-          padding: EdgeInsets.only(left: 16),
-          child: PixelGlyph(
-            rows: ['...c...', '..ccc..', '.ccccc.', 'ccccccc'],
-            palette: {'c': JdColors.cream},
-            size: 10,
-          ),
-        ),
-        Material(
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Material(
           color: JdColors.cream,
           shape: shape,
           child: InkWell(
@@ -1134,6 +1094,19 @@ class _BuddyBubble extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+          ),
+        ),
+        // 꼬리: 도트 계단 삼각형. 말풍선 테두리를 덮어 이어 보이게 한다.
+        const Positioned(
+          left: 18,
+          top: 0,
+          child: IgnorePointer(
+            child: PixelGlyph(
+              rows: ['...oo...', '..occo..', '.occcco.', 'occccccco'],
+              palette: {'c': JdColors.cream, 'o': JdColors.outline},
+              size: 10,
             ),
           ),
         ),
@@ -1620,12 +1593,9 @@ class _LetterRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const shape = PixelBorder(step: 3, steps: 2, side: BorderSide(color: JdColors.seam, width: 1.5));
-    return Material(
-      color: JdColors.paper,
-      shape: shape,
+    return GamePanel(
+      depth: 3,
       child: InkWell(
-        customBorder: shape,
         onTap: onTap,
         child: const Padding(
           padding: EdgeInsets.fromLTRB(14, 12, 10, 12),

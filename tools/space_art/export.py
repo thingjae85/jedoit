@@ -114,6 +114,80 @@ DECOR_SIZE = {  # 바닥: (w, d), 벽: (w, h)
 }
 
 
+
+# ---------- 벽지·바닥: 껍데기와 따로 그려서 앱에서 방마다 바꿔 끼운다 ----------
+# 벽 함수는 (벽을 따라간 칸 u, 높이 z) → 왼쪽 벽 색. 뒷벽은 조금 어둡게 칠한다.
+# 바닥 함수는 (x, y) → 색.
+
+def _brick(u, z):
+    if z % 3 == 0: return '#d9c7b1'
+    if (u + (z // 3) % 2 * 3) % 6 == 0: return '#d9c7b1'
+    return '#b8644d' if (u // 6 + z // 3) % 3 else '#ad5b45'
+
+
+WALLPAPERS = [  # (id, 이름, 왼쪽 벽 색 함수)
+    ('cream', '크림 벽지', lambda u, z: '#ecdfc4' if z % 8 else '#e3d3b4'),
+    ('mint', '민트 줄무늬', lambda u, z: '#a6d1bd' if (u // 3) % 2 == 0 else '#c0e1d0'),
+    ('sky', '하늘 물방울', lambda u, z: '#e3eef8' if (u % 6 == 2 and z % 6 == 3) or (u % 6 == 5 and z % 6 == 0) else '#a9c5e0'),
+    ('rose', '분홍 체크', lambda u, z: '#f2c8cb' if ((u // 4) + (z // 4)) % 2 == 0 else '#e8afb5'),
+    ('brick', '벽돌', _brick),
+]
+
+
+def _planks(a, b, seam, knot):
+    def f(x, y):
+        c = a if (y // 4) % 2 == 0 else b
+        if y % 4 == 3: c = seam
+        if (x + (y // 4) * 13) % 17 == 0: c = knot
+        return c
+    return f
+
+
+FLOORS = [  # (id, 이름, 색 함수)
+    ('oak', '밝은 원목', _planks('#f4dcae', '#ecd09e', '#dbb983', '#e3c38f')),
+    ('walnut', '짙은 원목', _planks('#a36b47', '#966141', '#7f5132', '#8a5939')),
+    ('tile', '체크 타일', lambda x, y: '#f3eee4' if ((x // 5) + (y // 5)) % 2 == 0 else '#b7c7d3'),
+    ('green', '초록 카펫', lambda x, y: '#86b37c' if (x * 3 + y * 7) % 11 else '#7aa871'),
+    ('pink', '분홍 카펫', lambda x, y: '#ebbcbe' if (x * 5 + y * 3) % 13 else '#e2aeb1'),
+]
+
+
+def _darker(c, f=0.86):
+    from iso2 import hx, mul
+    r, g, b = mul(hx(c), f)
+    return '#%02x%02x%02x' % (r, g, b)
+
+
+def surface_base(s, wall, floor):
+    """rooms2.base 와 같은 모양의 바닥·벽. wall/floor 는 위의 색 함수."""
+    s.oid = 1
+    for x in range(-1, N):
+        for y in range(-1, N):
+            s.box(x, y, -1, 1, 1, 1, '#4a2e24', top='#4a2e24', left='#5a3a2c', right='#3e271d')
+    for x in range(N):
+        for y in range(N):
+            c = floor(x, y)
+            s.box(x, y, 0, 1, 1, 1, c, top=c)
+    s.new('wall', 'env')
+    for y in range(-1, N):
+        for z in range(0, HW + 1):
+            c = wall(y, z)
+            s.box(-1, y, z, 1, 1, 1, c, top='#caa58c', right=c)
+    for x in range(0, N):
+        for z in range(0, HW + 1):
+            c = _darker(wall(x, z))
+            s.box(x, -1, z, 1, 1, 1, c, top='#caa58c', left=c)
+    for y in range(0, N): s.box(-1, y, 1, 1, 1, 1, '#6b4a3a', right='#6b4a3a', top='#6b4a3a')
+    for x in range(0, N): s.box(x, -1, 1, 1, 1, 1, '#5e4033', left='#5e4033', top='#5e4033')
+
+
+ROOM_BASE = {
+    'bedroom': rooms2.base,
+    'study': lambda s: base_col(s, '#7f9486', '#6c8174', '#e2c39a', '#d8b78c', '#cdaa7e'),
+}
+FLOOR_ID, WALL_ID = 1, 2
+
+
 # ---------- 그리기 ----------
 
 def hexmask():
@@ -184,7 +258,7 @@ def main():
     # 예전 방식(통째 그림, 자리별 소품 층) 파일은 지운다.
     for f in os.listdir(OUT):
         if f.endswith('.png'): os.remove(os.path.join(OUT, f))
-    for sub in ('decor', 'furniture'):
+    for sub in ('decor', 'furniture', 'surface'):
         d = os.path.join(OUT, sub)
         if os.path.isdir(d):
             for f in os.listdir(d): os.remove(os.path.join(d, f))
@@ -199,18 +273,54 @@ def main():
     for rid, shell_fn, stages, light, buddy_spot, frame in ROOMS:
         shells = []  # 단계별 껍데기 파일 이름 (같은 그림은 한 파일)
         seen = {}
+        # 바닥·벽만 그린 그림의 물체 id. 껍데기에서 이 자리는 비우고 벽지·바닥 그림이 채운다.
+        bs = Scene(); ROOM_BASE[rid](bs)
+        _, base_ids, _ = render(bs, RW, RH, OX, OY, raw=True)
+        lit_from = None
         for st in range(stages):
             names = []
             for night in (False, True):
                 s, day = shell_fn(st, night)
-                img = render(s, RW, RH, OX, OY, night=not day, light=light if day else None)
-                out = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); out.paste(img, (0, 0), hm)
+                if not night and day and lit_from is None: lit_from = st
+                assert night or day == (lit_from is not None), '낮 그림은 한 번 밝아지면 계속 밝아야 한다'
+                img, ids, add = render(s, RW, RH, OX, OY, night=not day, light=light if day else None, raw=True)
+                out = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); px = out.load()
+                for y in range(RH):
+                    for x in range(RW):
+                        if ids[y][x] in (FLOOR_ID, WALL_ID) and base_ids[y][x] == ids[y][x]:
+                            if add[y][x] > 0.004:
+                                px[x, y] = GLOW + (int(min(0.38, add[y][x]) * 255),)
+                        else:
+                            px[x, y] = tuple(img[y][x]) + (255,)
+                clip = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); clip.paste(out, (0, 0), hm); out = clip
                 buf = io.BytesIO(); out.save(buf, 'PNG'); key = hashlib.md5(buf.getvalue()).hexdigest()
                 if key not in seen:
                     seen[key] = f"{rid}_shell_{st}{'_n' if night else ''}.png"
                     save_png(out, seen[key])
                 names.append(seen[key])
             shells.append(tuple(names))
+        # 벽지·바닥: 방마다 (기본 + 고르는 것들) × (낮, 밤)
+        surfaces = {}
+        options = [('wall', 'basic', None)] + [('wall', i, f) for i, _, f in WALLPAPERS] + \
+                  [('floor', 'basic', None)] + [('floor', i, f) for i, _, f in FLOORS]
+        for kind, oid, fn in options:
+            pair = []
+            for night in (False, True):
+                sc = Scene()
+                if fn is None: ROOM_BASE[rid](sc)
+                elif kind == 'wall': surface_base(sc, fn, lambda x, y: '#808080')
+                else: surface_base(sc, lambda u, z: '#808080', fn)
+                img, ids, _ = render(sc, RW, RH, OX, OY, night=night, light=None if night else light, raw=True)
+                want = WALL_ID if kind == 'wall' else FLOOR_ID
+                out = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); px = out.load()
+                for y in range(RH):
+                    for x in range(RW):
+                        if base_ids[y][x] == want: px[x, y] = tuple(img[y][x]) + (255,)
+                clip = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); clip.paste(out, (0, 0), hm)
+                fname = f"surface/{rid}_{kind}_{oid}{'_n' if night else ''}.png"
+                save_png(clip, fname)
+                pair.append(fname)
+            surfaces[f'{kind}_{oid}'] = tuple(pair)
         furn = []
         for fid, name, unlock, fp, flat, build, variants in FURNITURE[rid]:
             vs = []
@@ -223,7 +333,7 @@ def main():
                     pair.append((fname, left, top, spr.width, spr.height))
                 vs.append((vst, pair))
             furn.append((fid, name, unlock, fp, flat, vs))
-        rooms_meta.append((rid, stages, shells, furn, buddy_spot, frame))
+        rooms_meta.append((rid, stages, shells, furn, buddy_spot, frame, lit_from, surfaces))
 
     decor_meta = []
     for item, (kind, _) in decor.ITEMS.items():
@@ -339,11 +449,13 @@ def write_dart(rooms_meta, decor_meta, buddy, dx, dy):
         '    required this.buddyY,',
         '    required this.frameX,',
         '    required this.frameZ,',
+        '    required this.litFrom,',
+        '    required this.surfaces,',
         '  });',
         '',
         '  final int stages;',
         '',
-        '  /// 단계별 껍데기(바닥·벽·창문) 그림 (낮, 밤).',
+        '  /// 단계별 껍데기(창문·벽에 붙은 것) 그림 (낮, 밤). 바닥과 벽 자리는 비어 있고 [surfaces]가 채운다.',
         '  final List<(String, String)> shells;',
         '',
         '  final List<FurnitureArt> furniture;',
@@ -356,11 +468,17 @@ def write_dart(rooms_meta, decor_meta, buddy, dx, dy):
         '  /// 오른쪽 뒷벽 사진 액자의 시작 칸.',
         '  final int frameX;',
         '  final int frameZ;',
+        '',
+        '  /// 이 단계부터 낮 그림이 밝다. 그 전에는 낮에도 어두운 방이라 밤 벽지·바닥을 쓴다.',
+        '  final int litFrom;',
+        '',
+        '  /// 벽지·바닥 그림: \'wall_basic\', \'floor_oak\' 같은 id → (낮, 밤).',
+        '  final Map<String, (String, String)> surfaces;',
         '}',
         '',
         'const Map<String, RoomArt> kRoomArt = {',
     ]
-    for rid, stages, shells, furn, (bx, by), (fx, fz) in rooms_meta:
+    for rid, stages, shells, furn, (bx, by), (fx, fz), lit_from, surfaces in rooms_meta:
         L.append(f"  '{rid}': RoomArt(")
         L.append(f'    stages: {stages},')
         L.append('    shells: [')
@@ -380,6 +498,11 @@ def write_dart(rooms_meta, decor_meta, buddy, dx, dy):
         L.append(f'    buddyY: {by},')
         L.append(f'    frameX: {fx},')
         L.append(f'    frameZ: {fz},')
+        L.append(f'    litFrom: {lit_from},')
+        L.append('    surfaces: {')
+        for sid, (d, n) in surfaces.items():
+            L.append(f"      '{sid}': ('assets/space/{d}', 'assets/space/{n}'),")
+        L.append('    },')
         L.append('  ),')
     L.append('};')
     L.append('')
@@ -388,6 +511,14 @@ def write_dart(rooms_meta, decor_meta, buddy, dx, dy):
     for item, kind, (w, d), pair in decor_meta:
         L.append(f"  '{item}': ({'true' if kind == 'wall' else 'false'}, {w}, {d}, {_spr(pair[0])}, {_spr(pair[1])}),")
     L.append('};')
+    L.append('')
+    L.append('/// 고를 수 있는 벽지와 바닥 (id, 이름). 기본(basic)은 방마다 처음 모습이다.')
+    L.append('const List<(String, String)> kWallpaperArt = [')
+    for i, name, _ in WALLPAPERS: L.append(f"  ('{i}', '{name}'),")
+    L.append('];')
+    L.append('const List<(String, String)> kFloorArt = [')
+    for i, name, _ in FLOORS: L.append(f"  ('{i}', '{name}'),")
+    L.append('];')
     with open(DART, 'w', encoding='utf-8') as f:
         f.write('\n'.join(L) + '\n')
 
@@ -395,10 +526,12 @@ def write_dart(rooms_meta, decor_meta, buddy, dx, dy):
 def preview(rooms_meta, decor_meta, bear):
     """확인용: 다 채운 방 낮·밤. 앱과 같은 방식(껍데기 + 가구를 깊이 순서로)으로 겹친다."""
     tiles = []
-    for rid, stages, shells, furn, _, _ in rooms_meta:
+    for rid, stages, shells, furn, _, _, _, surfaces in rooms_meta:
         st = stages - 1
         for night in (0, 1):
             im = Image.new('RGBA', (RW, RH), (34, 52, 74, 255))
+            im.alpha_composite(Image.open(os.path.join(OUT, surfaces['floor_basic'][night])))
+            im.alpha_composite(Image.open(os.path.join(OUT, surfaces['wall_basic'][night])))
             im.alpha_composite(Image.open(os.path.join(OUT, shells[st][night])))
             objs = []
             for fid, name, unlock, (x, y, w, d), flat, vs in furn:
