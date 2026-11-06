@@ -42,7 +42,8 @@ String buddyReaction(Mission mission, {required bool withPhoto, int seed = 0}) {
 }
 
 /// 방 카드에 평소 떠 있는 혼잣말. 방 상태를 따라갈 뿐, 아무것도 요구하지 않는다.
-String buddyIdleLine(SpaceState state, String roomId, {required bool doneToday}) {
+String buddyIdleLine(SpaceState state, String roomId, {required bool doneToday, bool night = false}) {
+  if (night) return doneToday ? '오늘도 하나 했네. 푹 쉬자.' : '조용한 밤이다. 나도 여기 있을게.';
   if (doneToday) return '오늘 방이 조금 밝아졌어.';
   final stage = state.stageOf(roomId);
   if (roomId == kSpaceRooms.first.id && stage == 0) return '조금 어둡다. 그래도 여기 있을게.';

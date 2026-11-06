@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models/buddy.dart';
+import '../models/decor.dart';
 import '../models/mission.dart';
 import '../models/mission_record.dart';
 import '../models/return_days.dart';
@@ -18,6 +19,7 @@ import '../utils/format.dart';
 import '../utils/photo.dart';
 import '../widgets/jd_widgets.dart';
 import '../widgets/space_view.dart';
+import 'decor_screen.dart';
 import 'design_compare_screen.dart';
 import 'mission_screen.dart';
 import 'records_screen.dart';
@@ -386,6 +388,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _openDecor(SpaceState state, String roomId, bool night) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => DecorScreen(
+          store: _space,
+          decor: _prefs.decor,
+          state: state,
+          roomId: roomId,
+          buddy: buddyById(_prefs.buddy),
+          night: night,
+          photo: _framePixels,
+        ),
+      ),
+    );
+    await _loadPrefs();
+  }
+
   Future<void> _setHiveView(bool hive) async {
     setState(() => _prefs = _copyPrefs(hiveView: hive));
     await _space.setHiveView(hive);
@@ -407,6 +426,7 @@ class _HomeScreenState extends State<HomeScreen> {
       customMissions: p.customMissions,
       rerolledOn: p.rerolledOn,
       letters: p.letters,
+      decor: p.decor,
     );
   }
 
@@ -615,6 +635,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final rerolled = _prefs.rerolled(today);
     final theme = discoveryThemeFor(today, rerolled: rerolled);
     final letters = _prefs.letters.where((l) => !l.opened && l.arrived(now)).toList();
+    final night = isNightTime(now);
 
     return SafeArea(
       child: ListView(
@@ -638,7 +659,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.5)),
               const Spacer(),
-              _CoinChip(coins: state.coins),
+              _CoinChip(coins: _prefs.decor.available(state.coins)),
             ],
           ),
           const SizedBox(height: 14),
@@ -653,7 +674,10 @@ class _HomeScreenState extends State<HomeScreen> {
             hiveView: _prefs.hiveView,
             buddy: buddy,
             photo: _framePixels,
-            line: _reaction ?? buddyIdleLine(state, shown, doneToday: todayRecords.isNotEmpty),
+            line: _reaction ?? buddyIdleLine(state, shown, doneToday: todayRecords.isNotEmpty, night: night),
+            night: night,
+            decor: _prefs.decor,
+            onDecorate: () => _openDecor(state, shown, night),
             change: _change,
             letter: letters.isEmpty ? null : letters.first,
             onToggleView: _setHiveView,
@@ -897,9 +921,13 @@ class _RoomCard extends StatelessWidget {
     required this.onUnpin,
     required this.onTapBuddy,
     required this.onOpenLetter,
+    required this.night,
+    required this.decor,
+    required this.onDecorate,
   });
 
   static const _bg = Color(0xFF22344A);
+  static const _bgNight = Color(0xFF141F2E);
   static const _glass = Color(0x24FFFFFF);
 
   final SpaceState state;
@@ -916,12 +944,15 @@ class _RoomCard extends StatelessWidget {
   final VoidCallback onUnpin;
   final VoidCallback onTapBuddy;
   final ValueChanged<FutureLetter> onOpenLetter;
+  final bool night;
+  final DecorData decor;
+  final VoidCallback onDecorate;
 
   @override
   Widget build(BuildContext context) {
     final room = spaceRoomById(shownRoom);
     return Container(
-      decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: night ? _bgNight : _bg, borderRadius: BorderRadius.circular(20)),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
@@ -939,12 +970,16 @@ class _RoomCard extends StatelessWidget {
                             shownRoom: shownRoom,
                             photo: photo,
                             onTapRoom: onPickRoom,
+                            night: night,
+                            decor: decor,
                           )
                         : RoomPicture(
                             roomId: shownRoom,
                             stage: state.stageOf(shownRoom),
                             buddy: buddy,
                             photo: photo,
+                            night: night,
+                            decor: decor.slotsOf(shownRoom),
                           ),
                   ),
                 ),
@@ -1006,6 +1041,31 @@ class _RoomCard extends StatelessWidget {
               ),
             ),
           ),
+          if (!hiveView)
+            Positioned(
+              right: 82,
+              top: 10,
+              child: Material(
+                color: _glass,
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: onDecorate,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.chair_outlined, size: 14, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text('꾸미기',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             right: 10,
             top: 10,

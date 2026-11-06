@@ -15,6 +15,7 @@ from rooms2 import (WOOD, WOODT, window, sun, crate, books_floor, plant_small, p
                     lamp, chair, rug, frames, drawer, bin_)
 from hive import base_col, bookshelf, armchair, floor_lamp, side_table, hexpoly
 from chibi import bear_img, ham_img
+import decor
 
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 OUT = os.path.join(ROOT, 'assets', 'space')
@@ -42,9 +43,9 @@ def bed_window(s, day):
     window(s, 13, 9, 24, 13, day)
 
 
-def bedroom(stage):
+def bedroom(stage, night=False):
     """작은 침실. 0단계는 어둡고 짐 상자가 쌓인 방, 미션을 할수록 회복된다."""
-    day = stage >= 1
+    day = stage >= 1 and not night
     s = Scene(); rooms2.base(s); bed_window(s, day)
     if stage <= 1:
         crate(s, 5, 6); crate(s, 24, 20); books_floor(s, 13, 7)
@@ -61,17 +62,18 @@ def bedroom(stage):
     return s, day
 
 
-def study(stage):
+def study(stage, night=False):
     """책 읽는 방. 처음엔 창문만 있는 빈 방."""
+    day = not night
     s = Scene(); base_col(s, '#7f9486', '#6c8174', '#e2c39a', '#d8b78c', '#cdaa7e')
-    window(s, 24, 8, 24, 13, True)
+    window(s, 24, 8, 24, 13, day)
     if stage >= 1: bookshelf(s, 4, 0)
     if stage >= 2: rug(s, 10, 14, 12, 10)
     if stage >= 3: armchair(s, 6, 16)
     if stage >= 4: side_table(s, 14, 18)
     if stage >= 5: plant_small(s, 2, 26)
-    if stage >= 6: floor_lamp(s, 17, 3)
-    return s, True
+    if stage >= 6: floor_lamp(s, 17, 3, day)
+    return s, day
 
 
 # 방 정의: (id, 그리는 함수, 단계 수, 햇빛 함수, 캐릭터 자리(단계별 x,y,z), 사진 액자 (x0,z0))
@@ -107,8 +109,52 @@ def locked_cell():
     return im
 
 
+GLOW = (255, 214, 140)
+
+
+def _diff(a, b):
+    pa, pb = a.load(), b.load()
+    return {(x, y) for y in range(RH) for x in range(RW) if pa[x, y] != pb[x, y]}
+
+
+def decor_layers(fn, stages, light, slot_pos, item):
+    """소품 하나를 한 자리에 놓은 그림 층(낮, 밤). 다 채운 방에 놓았을 때와 안 놓았을 때의 차이만 남긴다.
+    밤에 빛나는 소품의 번짐은 반투명 빛 층으로 바꿔서 어떤 단계 방 위에 올려도 맞게 한다."""
+    kind, draw = decor.ITEMS[item]
+    hexm = Image.new('L', (RW, RH), 0); ImageDraw.Draw(hexm).polygon(hexpoly(OX, OY), fill=255)
+    hm = hexm.load()
+    out = []
+    foot = None
+    for night in (False, True):
+        base, day = fn(stages - 1, night)
+        withs, _ = fn(stages - 1, night)
+        draw(withs, *slot_pos, night=night)
+        args = dict(night=not day, light=light if day else None)
+        a = render(base, RW, RH, OX, OY, **args); b = render(withs, RW, RH, OX, OY, **args)
+        changed = _diff(a, b)
+        if foot is None:
+            foot = changed  # 낮 차이 = 소품이 차지하는 칸
+        layer = Image.new('RGBA', (RW, RH), (0, 0, 0, 0)); lp = layer.load()
+        pa, pb = a.load(), b.load()
+        for (x, y) in changed:
+            if not hm[x, y]: continue
+            if (x, y) in foot:
+                lp[x, y] = pb[x, y] + (255,)
+            else:
+                # 빛 번짐: b = a*(1-t) + GLOW*t 에서 t를 구한다
+                best = 0.0
+                for i in range(3):
+                    den = GLOW[i] - pa[x, y][i]
+                    if abs(den) > 20: best = max(best, (pb[x, y][i] - pa[x, y][i]) / den)
+                t = max(0.0, min(0.6, best))
+                if t > 0.01: lp[x, y] = GLOW + (int(t * 255),)
+        out.append(layer)
+    return out
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
+    os.makedirs(os.path.join(OUT, 'decor'), exist_ok=True)
     bear, ham = bear_img(1), ham_img(1)
     bear.save(os.path.join(OUT, 'bear.png')); ham.save(os.path.join(OUT, 'hamster.png'))
     locked_cell().save(os.path.join(OUT, 'locked.png'))
@@ -116,14 +162,21 @@ def main():
     for rid, fn, stages, light, spot, frame in ROOMS:
         spots = []
         for st in range(stages):
-            s, day = fn(st)
-            img = render(s, RW, RH, OX, OY, night=not day, light=light if day else None)
-            mask(img).save(os.path.join(OUT, f'{rid}_{st}.png'), optimize=True)
+            for night in (False, True):
+                s, day = fn(st, night)
+                img = render(s, RW, RH, OX, OY, night=not day, light=light if day else None)
+                suffix = '_n' if night else ''
+                mask(img).save(os.path.join(OUT, f'{rid}_{st}{suffix}.png'), optimize=True)
+                if '--preview' in sys.argv and st in (0, stages - 1):
+                    pv = mask(img); pv.alpha_composite(bear, anchor(*spot(st), bear))
+                    pv.resize((RW * 3, RH * 3), Image.NEAREST).save(os.path.join(HERE, f'preview_{rid}_{st}{suffix}.png'))
             spots.append(anchor(*spot(st), bear))
-            # 확인용: 캐릭터를 얹은 그림
-            if '--preview' in sys.argv:
-                pv = mask(img); pv.alpha_composite(bear, spots[-1])
-                pv.resize((RW * 3, RH * 3), Image.NEAREST).save(os.path.join(HERE, f'preview_{rid}_{st}.png'))
+        for slot, pos in decor.SLOTS[rid].items():
+            for item, (kind, _) in decor.ITEMS.items():
+                if kind != decor.slot_kind(slot): continue
+                dayl, nightl = decor_layers(fn, stages, light, pos, item)
+                dayl.save(os.path.join(OUT, 'decor', f'{rid}_{slot}_{item}.png'), optimize=True)
+                nightl.save(os.path.join(OUT, 'decor', f'{rid}_{slot}_{item}_n.png'), optimize=True)
         meta.append((rid, stages, spots, frame))
     p = hexpoly(OX, OY)
     dx = p[1][0] - p[5][0] + 4

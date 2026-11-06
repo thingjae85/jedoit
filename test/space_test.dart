@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:jeoduit/app.dart';
+import 'package:jeoduit/models/decor.dart';
 import 'package:jeoduit/models/mission.dart';
 import 'package:jeoduit/models/mission_record.dart';
 import 'package:jeoduit/models/return_days.dart';
@@ -147,6 +148,90 @@ void main() {
     final broken = await SpaceStore().load();
     expect(broken.customMissions, isEmpty);
     expect(broken.buddy, 'bear');
+  });
+
+  test('밤은 저녁 7시부터 아침 6시 전까지', () {
+    expect(isNightTime(DateTime(2026, 11, 6, 18, 59)), isFalse);
+    expect(isNightTime(DateTime(2026, 11, 6, 19)), isTrue);
+    expect(isNightTime(DateTime(2026, 11, 7, 5, 59)), isTrue);
+    expect(isNightTime(DateTime(2026, 11, 7, 6)), isFalse);
+  });
+
+  test('꾸미기: 코인이 있어야 사고, 벽 하나·바닥 둘에 놓고, 치우면 보관함으로', () {
+    final clock = decorById('clock')!;
+    final poster = decorById('poster')!;
+    final lamp = decorById('moodlamp')!;
+    final cactus = decorById('cactus')!;
+    final books = decorById('books')!;
+
+    var d = const DecorData();
+    expect(d.buy(lamp, 30), same(d), reason: '40코인짜리는 30코인으로 못 산다');
+    d = d.buy(clock, 100).buy(poster, 100).buy(lamp, 100);
+    expect(d.spent, 90);
+    expect(d.available(100), 10);
+    expect(d.buy(clock, 100), same(d), reason: '이미 있는 건 다시 안 산다');
+    expect(d.buy(cactus, 100), same(d), reason: '남은 10코인으로는 못 산다');
+
+    d = d.place(clock, 'bedroom');
+    expect(d.slotsOf('bedroom'), {'wall': 'clock'});
+    d = d.place(poster, 'bedroom');
+    expect(d.slotsOf('bedroom'), {'wall': 'poster'}, reason: '벽은 하나뿐이라 시계는 보관함으로');
+    expect(d.roomOf('clock'), isNull);
+
+    d = d.place(lamp, 'bedroom');
+    expect(d.slotsOf('bedroom')['floor1'], 'moodlamp');
+    d = d.place(lamp, 'study');
+    expect(d.roomOf('moodlamp'), 'study', reason: '다른 방으로 옮긴다');
+    expect(d.slotsOf('bedroom').containsValue('moodlamp'), isFalse);
+
+    d = d.remove('poster');
+    expect(d.roomOf('poster'), isNull);
+    expect(d.owned, contains('poster'));
+    expect(d.place(books, 'study'), same(d), reason: '안 산 건 놓을 수 없다');
+
+    final back = DecorData.fromJson(d.toJson());
+    expect(back.owned, d.owned);
+    expect(back.spent, d.spent);
+    expect(back.slotsOf('study'), d.slotsOf('study'));
+    expect(DecorData.fromJson({'owned': ['없는것', 'clock'], 'placements': {'bedroom': {'wall': '없는것', 'floor9': 'clock'}}, 'spent': -5}).spent, 0);
+  });
+
+  test('침실은 상자를 풀고 나서(2단계)부터 꾸밀 수 있다', () {
+    expect(canDecorate('bedroom', 1), isFalse);
+    expect(canDecorate('bedroom', 2), isTrue);
+    expect(canDecorate('study', 0), isTrue);
+    expect(decorAsset('bedroom', 'wall', 'clock', night: true), 'assets/space/decor/bedroom_wall_clock_n.png');
+  });
+
+  testWidgets('꾸미기에서 코인으로 소품을 사면 방에 놓이고 남은 코인이 줄어든다', (tester) async {
+    _useTallScreen(tester);
+    final repo = LocalRecordRepository();
+    final now = DateTime.now();
+    for (var i = 0; i < 3; i++) {
+      await repo.add(_record('r$i', 'water', now.subtract(Duration(minutes: i))));
+    }
+    await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(find.byKey(const Key('coins'))).data, '30');
+
+    await tester.tap(find.text('꾸미기'));
+    await tester.pumpAndSettle();
+    expect(find.text('코인 30'), findsOneWidget);
+    final buyClock = find.descendant(of: find.widgetWithText(ListTile, '벽시계'), matching: find.text('사기'));
+    await tester.tap(buyClock);
+    await tester.pumpAndSettle();
+    expect(find.text('코인 10'), findsOneWidget);
+    expect(find.text('이 방에 놓여 있어요'), findsOneWidget);
+    // 40코인짜리 무드등은 못 산다.
+    final lampButton = find.ancestor(
+        of: find.descendant(of: find.widgetWithText(ListTile, '무드등'), matching: find.text('사기')),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton));
+    expect(tester.widget<ButtonStyleButton>(lampButton).onPressed, isNull);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(find.byKey(const Key('coins'))).data, '10');
+    expect((await SpaceStore().load()).decor.slotsOf('bedroom'), {'wall': 'clock'});
   });
 
   testWidgets('홈에는 내 공간과 미션만 있고 친구 챌린지는 챌린지 탭에 따로 있다', (tester) async {

@@ -94,6 +94,9 @@ SpaceEvent? spaceEventAt(int count) {
   return null;
 }
 
+/// 저녁 7시부터 아침 6시 전까지는 방이 밤 분위기가 된다.
+bool isNightTime(DateTime t) => t.hour >= 19 || t.hour < 6;
+
 /// 미션 하나에 받는 코인. 코인은 미션을 하면 항상 받는다.
 const coinsPerMission = 10;
 

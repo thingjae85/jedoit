@@ -1,13 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../models/buddy.dart';
+import '../models/decor.dart';
 import '../models/space.dart';
 import '../models/space_art.dart';
 
-/// 방 하나. 미리 그린 단계 그림 위에 액자 사진과 캐릭터를 얹는다.
+/// 방 하나. 미리 그린 단계 그림 위에 꾸미기 소품, 액자 사진, 캐릭터를 얹는다.
 class RoomPicture extends StatelessWidget {
-  const RoomPicture(
-      {super.key, required this.roomId, required this.stage, required this.buddy, this.photo, this.showBuddy = true});
+  const RoomPicture({
+    super.key,
+    required this.roomId,
+    required this.stage,
+    required this.buddy,
+    this.photo,
+    this.showBuddy = true,
+    this.night = false,
+    this.decor = const {},
+  });
 
   final String roomId;
   final int stage;
@@ -16,6 +25,12 @@ class RoomPicture extends StatelessWidget {
   /// 벽 액자에 걸 8×8 도트 사진 (0xAARRGGBB). 없으면 액자도 없다.
   final List<int>? photo;
   final bool showBuddy;
+
+  /// 밤 그림(불 켜진 스탠드·무드등)을 쓸지.
+  final bool night;
+
+  /// 자리 → 소품 id.
+  final Map<String, String> decor;
 
   @override
   Widget build(BuildContext context) {
@@ -29,9 +44,16 @@ class RoomPicture extends StatelessWidget {
         return Stack(
           children: [
             Positioned.fill(
-              child: Image.asset('assets/space/${roomId}_$st.png',
+              child: Image.asset('assets/space/${roomId}_$st${night ? '_n' : ''}.png',
                   filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),
             ),
+            if (canDecorate(roomId, st))
+              for (final e in decor.entries)
+                if (decorById(e.value) != null)
+                  Positioned.fill(
+                    child: Image.asset(decorAsset(roomId, e.key, e.value, night: night),
+                        filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),
+                  ),
             if (photo != null)
               Positioned.fill(
                 child: CustomPaint(painter: _FramePainter(photo!, art.frameX, art.frameZ, s)),
@@ -91,7 +113,16 @@ class _FramePainter extends CustomPainter {
 
 /// 벌집 보기: 방들이 육각형으로 붙어 있다. 아직 안 열린 칸은 닫힌 문.
 class HivePicture extends StatelessWidget {
-  const HivePicture({super.key, required this.state, required this.buddy, required this.shownRoom, this.photo, this.onTapRoom});
+  const HivePicture({
+    super.key,
+    required this.state,
+    required this.buddy,
+    required this.shownRoom,
+    this.photo,
+    this.onTapRoom,
+    this.night = false,
+    this.decor = const DecorData(),
+  });
 
   final SpaceState state;
   final Buddy buddy;
@@ -100,6 +131,8 @@ class HivePicture extends StatelessWidget {
   final String shownRoom;
   final List<int>? photo;
   final ValueChanged<String>? onTapRoom;
+  final bool night;
+  final DecorData decor;
 
   static const lockedText = '문 너머에 뭔가 있어요';
 
@@ -168,6 +201,8 @@ class HivePicture extends StatelessWidget {
                           buddy: buddy,
                           photo: id == shownRoom ? photo : null,
                           showBuddy: id == shownRoom,
+                          night: night,
+                          decor: decor.slotsOf(id),
                         ),
                 ),
             ],

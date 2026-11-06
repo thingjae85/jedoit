@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/decor.dart';
 import '../models/mission.dart';
 
 /// 내가 직접 추가하는 미션은 2개까지.
@@ -44,6 +45,7 @@ class SpacePrefs {
     this.customMissions = const [],
     this.rerolledOn,
     this.letters = const [],
+    this.decor = const DecorData(),
   });
 
   /// 하나만 보기에서 고정한 방. null이면 가장 최근에 바뀐 방.
@@ -62,6 +64,9 @@ class SpacePrefs {
 
   final List<FutureLetter> letters;
 
+  /// 산 소품, 놓은 자리, 쓴 코인.
+  final DecorData decor;
+
   bool rerolled(DateTime day) => rerolledOn == dayKey(day);
 }
 
@@ -75,6 +80,7 @@ class SpaceStore {
   static const customKey = 'jeoduit.missions.custom';
   static const rerollKey = 'jeoduit.discovery.rerolled';
   static const lettersKey = 'jeoduit.letters';
+  static const decorKey = 'jeoduit.decor';
 
   /// 저장값이 깨져 있으면 그 항목만 기본값으로 읽는다.
   Future<SpacePrefs> load() async {
@@ -98,6 +104,11 @@ class SpaceStore {
         }
       }
     } catch (_) {}
+    var decor = const DecorData();
+    try {
+      final raw = p.getString(decorKey);
+      if (raw != null) decor = DecorData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {}
     final buddy = p.getString(buddyKey);
     return SpacePrefs(
       pinnedRoom: p.getString(pinnedKey),
@@ -106,7 +117,13 @@ class SpaceStore {
       customMissions: custom.take(maxCustomMissions).toList(),
       rerolledOn: p.getString(rerollKey),
       letters: letters,
+      decor: decor,
     );
+  }
+
+  Future<void> saveDecor(DecorData decor) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(decorKey, jsonEncode(decor.toJson()));
   }
 
   Future<void> setPinnedRoom(String? id) async {
