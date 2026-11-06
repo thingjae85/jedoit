@@ -18,6 +18,7 @@ import '../theme.dart';
 import '../utils/format.dart';
 import '../utils/photo.dart';
 import '../widgets/jd_widgets.dart';
+import '../widgets/pixel_ui.dart';
 import '../widgets/space_view.dart';
 import 'decor_screen.dart';
 import 'design_compare_screen.dart';
@@ -642,29 +643,31 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                    color: JdColors.solo,
-                    borderRadius: BorderRadius.circular(9)),
-                child: const Icon(Icons.check_rounded,
-                    size: 18, color: Colors.white),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${today.month}월 ${today.day}일 ${_weekdays[today.weekday - 1]}요일',
+                        style: const TextStyle(fontSize: 12, color: JdColors.subtle, letterSpacing: 0.2)),
+                    const SizedBox(height: 2),
+                    const Text('저두잇',
+                        style: TextStyle(
+                            fontSize: 24,
+                            height: 1.15,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -1.0,
+                            color: JdColors.ink)),
+                  ],
+                ),
               ),
-              const SizedBox(width: 8),
-              const Text('저두잇',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5)),
-              const Spacer(),
               _CoinChip(coins: _prefs.decor.available(state.coins)),
             ],
           ),
           const SizedBox(height: 14),
           if (away >= 2) ...[
-            _WelcomeBack(daysAway: away),
+            _WelcomeBack(daysAway: away, buddy: buddy),
             const SizedBox(height: 12),
           ],
           _RoomCard(
@@ -686,75 +689,56 @@ class _HomeScreenState extends State<HomeScreen> {
             onTapBuddy: _chooseBuddy,
             onOpenLetter: _openLetter,
           ),
+          const SizedBox(height: 26),
+          const SectionTitle(title: '오늘의 미션', note: '하나만 해도 충분해요'),
+          _MissionPanel(children: [
+            for (final mission in widget.missionsFor(today))
+              if (mission.kind == MissionKind.discovery)
+                _MissionRow(
+                  mission: mission,
+                  completed: todayMissions.contains(mission.id),
+                  subtitle: '주제: ${theme.title}',
+                  onTap: () => _openMission(mission, theme: theme),
+                  trailing: rerolled || todayMissions.contains(mission.id)
+                      ? null
+                      : TinyButton(
+                          label: '다른 걸로',
+                          icon: Icons.shuffle_rounded,
+                          onTap: () => _reroll(today),
+                        ),
+                )
+              else
+                _MissionRow(
+                  mission: mission,
+                  completed: todayMissions.contains(mission.id),
+                  onTap: () => _openMission(mission),
+                ),
+          ]),
           const SizedBox(height: 22),
-          Row(
-            children: [
-              const Text('오늘의 미션',
-                  style:
-                      TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-              const Spacer(),
-              Text('하나만 해도 충분해요',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: JdColors.subtle)),
-            ],
+          SectionTitle(
+            title: '내 미션',
+            note: '${_prefs.customMissions.length}/$maxCustomMissions',
           ),
-          const SizedBox(height: 6),
-          for (final mission in widget.missionsFor(today))
-            if (mission.kind == MissionKind.discovery)
-              _MissionRow(
-                mission: mission,
-                completed: todayMissions.contains(mission.id),
-                subtitle: '주제: ${theme.title}',
-                onTap: () => _openMission(mission, theme: theme),
-                trailing: rerolled || todayMissions.contains(mission.id)
-                    ? null
-                    : TextButton(
-                        onPressed: () => _reroll(today),
-                        child: const Text('다른 걸로'),
-                      ),
-              )
-            else
+          _MissionPanel(children: [
+            for (final mission in _prefs.customMissions)
               _MissionRow(
                 mission: mission,
                 completed: todayMissions.contains(mission.id),
                 onTap: () => _openMission(mission),
-              ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              const Text('내 미션',
-                  style:
-                      TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-              const Spacer(),
-              if (_prefs.customMissions.length < maxCustomMissions)
-                TextButton.icon(
-                  onPressed: _addCustomMission,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('내 미션 추가'),
+                trailing: IconButton(
+                  tooltip: '내 미션 빼기',
+                  icon: const Icon(Icons.close, size: 18),
+                  color: JdColors.faint,
+                  onPressed: () => _removeCustomMission(mission),
                 ),
-            ],
-          ),
-          if (_prefs.customMissions.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 4),
-              child: Text('매일 하고 싶은 걸 2개까지 넣어 둘 수 있어요.',
-                  style: TextStyle(fontSize: 13, color: JdColors.faint)),
-            ),
-          for (final mission in _prefs.customMissions)
-            _MissionRow(
-              mission: mission,
-              completed: todayMissions.contains(mission.id),
-              onTap: () => _openMission(mission),
-              trailing: IconButton(
-                tooltip: '내 미션 빼기',
-                icon: const Icon(Icons.close, size: 18),
-                color: JdColors.faint,
-                onPressed: () => _removeCustomMission(mission),
               ),
-            ),
-          const Divider(height: 32),
+            if (_prefs.customMissions.length < maxCustomMissions)
+              _AddMissionRow(
+                onTap: _addCustomMission,
+                hint: _prefs.customMissions.isEmpty ? '매일 하고 싶은 걸 2개까지 넣어 둘 수 있어요.' : null,
+              ),
+          ]),
+          const SizedBox(height: 26),
           _WeekStrip(
             today: today,
             byDay: byDay,
@@ -765,15 +749,8 @@ class _HomeScreenState extends State<HomeScreen> {
             onOpenRecords: () => _selectTab(_recordsTab),
             onOpenDay: _openDay,
           ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _writeLetter,
-              icon: const Icon(Icons.mail_outline, size: 18),
-              label: const Text('미래의 나에게 편지 쓰기'),
-            ),
-          ),
+          const SizedBox(height: 14),
+          _LetterRow(onTap: _writeLetter),
         ],
       ),
     );
@@ -834,36 +811,35 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+const _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+
 /// 며칠 쉬다 돌아왔을 때. 쉰 날을 탓하지 않고 반겨 준다.
 class _WelcomeBack extends StatelessWidget {
-  const _WelcomeBack({required this.daysAway});
+  const _WelcomeBack({required this.daysAway, required this.buddy});
 
   final int daysAway;
+  final Buddy buddy;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: JdColors.soloTint,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: const Row(
+    return PixelPanel(
+      color: JdColors.cream,
+      border: JdColors.woodLight,
+      padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('👋', style: TextStyle(fontSize: 28)),
-          SizedBox(width: 12),
-          Expanded(
+          Image.asset(buddy.asset, width: 33, height: 35, filterQuality: FilterQuality.none),
+          const SizedBox(width: 12),
+          const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('다시 와줘서 반가워요',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: JdColors.soloText)),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JdColors.woodText)),
                 SizedBox(height: 4),
                 Text('쉬었던 날도 괜찮아요. 그동안 채운 방은 그대로예요.\n오늘은 제일 쉬운 거 하나만 해 볼까요?',
-                    style: TextStyle(fontSize: 13, color: JdColors.subtle)),
+                    style: TextStyle(fontSize: 13, height: 1.45, color: JdColors.subtle)),
               ],
             ),
           ),
@@ -873,7 +849,7 @@ class _WelcomeBack extends StatelessWidget {
   }
 }
 
-/// 미션을 하면 항상 받는 코인. 나중에 꾸미기에 쓴다.
+/// 미션을 하면 항상 받는 코인. 꾸미기에 쓴다.
 class _CoinChip extends StatelessWidget {
   const _CoinChip({required this.coins});
 
@@ -881,24 +857,54 @@ class _CoinChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: JdColors.panel, borderRadius: BorderRadius.circular(12)),
+    return PixelPanel(
+      color: JdColors.paperDeep,
+      border: JdColors.seam,
+      step: 2,
+      padding: const EdgeInsets.fromLTRB(9, 6, 11, 6),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8C252),
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFFC29A2E), width: 2),
-            ),
-          ),
-          const SizedBox(width: 5),
-          Text('$coins', key: const Key('coins'), style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+          const PixelCoin(size: 14),
+          const SizedBox(width: 6),
+          Text('$coins',
+              key: const Key('coins'),
+              style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: JdColors.woodText,
+                  fontFeatures: [FontFeature.tabularFigures()])),
         ],
+      ),
+    );
+  }
+}
+
+/// 방 카드 위의 작은 도트 버튼 판.
+class _CardButton extends StatelessWidget {
+  const _CardButton({required this.child, this.onTap, this.light = false, this.padding});
+
+  final Widget child;
+  final VoidCallback? onTap;
+
+  /// 나무색으로 눈에 띄게 (꾸미기).
+  final bool light;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = PixelBorder(
+      step: 2,
+      steps: 1,
+      side: BorderSide(color: light ? JdColors.wood : const Color(0x33FFFFFF), width: 1.5),
+    );
+    return Material(
+      color: light ? JdColors.woodLight : JdColors.roomNavyDeep.withValues(alpha: 0.75),
+      shape: shape,
+      child: InkWell(
+        customBorder: shape,
+        onTap: onTap,
+        child: Padding(padding: padding ?? const EdgeInsets.symmetric(horizontal: 10, vertical: 7), child: child),
       ),
     );
   }
@@ -926,10 +932,6 @@ class _RoomCard extends StatelessWidget {
     required this.onDecorate,
   });
 
-  static const _bg = Color(0xFF22344A);
-  static const _bgNight = Color(0xFF141F2E);
-  static const _glass = Color(0x24FFFFFF);
-
   final SpaceState state;
   final String shownRoom;
   final bool pinned;
@@ -948,21 +950,88 @@ class _RoomCard extends StatelessWidget {
   final DecorData decor;
   final VoidCallback onDecorate;
 
+  static const _label = TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.1);
+
   @override
   Widget build(BuildContext context) {
     final room = spaceRoomById(shownRoom);
+    final bg = night ? JdColors.roomNavyDeep : JdColors.roomNavy;
     return Container(
-      decoration: BoxDecoration(color: night ? _bgNight : _bg, borderRadius: BorderRadius.circular(20)),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
+      decoration: ShapeDecoration(color: bg, shape: const PixelBorder(step: 4, steps: 2)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 위쪽 줄: 방 이름 · 꾸미기 · 보기 바꾸기
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 48, 12, 12),
-            child: Column(
+            padding: const EdgeInsets.fromLTRB(16, 12, 10, 0),
+            child: Row(
               children: [
-                Center(
+                Flexible(
+                  child: Text(hiveView ? '내 공간' : (room?.name ?? ''),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: _label.copyWith(fontSize: 14)),
+                ),
+                if (!hiveView && pinned) ...[
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: onUnpin,
+                    child: const Tooltip(
+                      message: '고정 풀기',
+                      child: Padding(
+                        padding: EdgeInsets.all(2),
+                        child: Icon(Icons.push_pin, size: 14, color: Color(0xCCFFFFFF)),
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                if (!hiveView) ...[
+                  _CardButton(
+                    light: true,
+                    onTap: onDecorate,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.chair_outlined, size: 14, color: JdColors.woodText),
+                        SizedBox(width: 4),
+                        Text('꾸미기',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: JdColors.woodText)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                _CardButton(
+                  padding: const EdgeInsets.all(3),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ViewButton(
+                        tooltip: '하나만 보기',
+                        selected: !hiveView,
+                        hive: false,
+                        onTap: () => onToggleView(false),
+                      ),
+                      const SizedBox(width: 2),
+                      _ViewButton(
+                        tooltip: '벌집 보기',
+                        selected: hiveView,
+                        hive: true,
+                        onTap: () => onToggleView(true),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                child: Center(
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: hiveView ? 340 : 240),
+                    constraints: BoxConstraints(maxWidth: hiveView ? 340 : 250),
                     child: hiveView
                         ? HivePicture(
                             state: state,
@@ -983,142 +1052,92 @@ class _RoomCard extends StatelessWidget {
                           ),
                   ),
                 ),
-                const SizedBox(height: 10),
-                Material(
-                  color: Colors.white.withValues(alpha: 0.95),
-                  borderRadius: BorderRadius.circular(14),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: onTapBuddy,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
-                      child: Row(
-                        children: [
-                          Image.asset(buddy.asset, width: 22, height: 23, filterQuality: FilterQuality.none),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(line, style: const TextStyle(fontSize: 13, color: JdColors.ink)),
-                                if (change != null)
-                                  Text(change!,
-                                      style: const TextStyle(
-                                          fontSize: 12, fontWeight: FontWeight.w700, color: JdColors.soloText)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            left: 12,
-            top: 12,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: _glass, borderRadius: BorderRadius.circular(10)),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(hiveView ? '내 공간' : (room?.name ?? ''),
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-                  if (!hiveView && pinned) ...[
-                    const SizedBox(width: 4),
-                    InkWell(
-                      onTap: onUnpin,
-                      child: const Tooltip(
-                        message: '고정 풀기',
-                        child: Icon(Icons.push_pin, size: 14, color: Colors.white),
-                      ),
-                    ),
-                  ],
-                ],
               ),
-            ),
-          ),
-          if (!hiveView)
-            Positioned(
-              right: 82,
-              top: 10,
-              child: Material(
-                color: _glass,
-                borderRadius: BorderRadius.circular(10),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: onDecorate,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                    child: Row(
+              if (letter != null)
+                Positioned(
+                  right: 12,
+                  top: 4,
+                  child: _CardButton(
+                    light: true,
+                    onTap: () => onOpenLetter(letter!),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.chair_outlined, size: 14, color: Colors.white),
-                        SizedBox(width: 4),
-                        Text('꾸미기',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          Positioned(
-            right: 10,
-            top: 10,
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(color: _glass, borderRadius: BorderRadius.circular(10)),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _ViewButton(
-                    tooltip: '하나만 보기',
-                    selected: !hiveView,
-                    hive: false,
-                    onTap: () => onToggleView(false),
-                  ),
-                  const SizedBox(width: 2),
-                  _ViewButton(
-                    tooltip: '벌집 보기',
-                    selected: hiveView,
-                    hive: true,
-                    onTap: () => onToggleView(true),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (letter != null)
-            Positioned(
-              right: 12,
-              top: 50,
-              child: Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: () => onOpenLetter(letter!),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.mail, size: 14, color: Color(0xFF9A4120)),
+                        Icon(Icons.mail, size: 14, color: JdColors.togetherText),
                         SizedBox(width: 4),
                         Text('편지가 왔어요',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF9A4120))),
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: JdColors.togetherText)),
                       ],
                     ),
                   ),
                 ),
-              ),
-            ),
+            ],
+          ),
+          // 캐릭터 혼잣말: 말풍선 꼬리가 위(방)를 가리킨다.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            child: _BuddyBubble(buddy: buddy, line: line, change: change, onTap: onTapBuddy),
+          ),
         ],
       ),
+    );
+  }
+}
+
+/// 캐릭터 말풍선. 누르면 캐릭터를 바꾼다.
+class _BuddyBubble extends StatelessWidget {
+  const _BuddyBubble({required this.buddy, required this.line, required this.change, required this.onTap});
+
+  final Buddy buddy;
+  final String line;
+  final String? change;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const shape = PixelBorder(step: 3, steps: 1);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 꼬리: 도트 계단 삼각형
+        const Padding(
+          padding: EdgeInsets.only(left: 16),
+          child: PixelGlyph(
+            rows: ['...c...', '..ccc..', '.ccccc.', 'ccccccc'],
+            palette: {'c': JdColors.cream},
+            size: 10,
+          ),
+        ),
+        Material(
+          color: JdColors.cream,
+          shape: shape,
+          child: InkWell(
+            customBorder: shape,
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 9, 12, 9),
+              child: Row(
+                children: [
+                  Image.asset(buddy.asset, width: 22, height: 23, filterQuality: FilterQuality.none),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(line, style: const TextStyle(fontSize: 13, height: 1.35, color: JdColors.ink)),
+                        if (change != null)
+                          Text(change!,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: JdColors.leafDeep)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1137,16 +1156,15 @@ class _ViewButton extends StatelessWidget {
       message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
         child: Container(
-          width: 30,
-          height: 26,
-          decoration: BoxDecoration(
-            color: selected ? Colors.white.withValues(alpha: 0.92) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+          width: 28,
+          height: 24,
+          decoration: ShapeDecoration(
+            color: selected ? JdColors.cream : Colors.transparent,
+            shape: const PixelBorder(step: 2, steps: 1),
           ),
           child: CustomPaint(
-            painter: _HexIconPainter(hive: hive, color: selected ? JdColors.solo : const Color(0xFFE8EEF5)),
+            painter: _HexIconPainter(hive: hive, color: selected ? JdColors.roomNavy : const Color(0xFFB9C6D6)),
           ),
         ),
       ),
@@ -1303,8 +1321,6 @@ class _WeekStrip extends StatelessWidget {
     required this.onOpenDay,
   });
 
-  static const _dow = ['월', '화', '수', '목', '금', '토', '일'];
-
   final DateTime today;
   final Map<DateTime, List<MissionRecord>> byDay;
   final bool loadFailed;
@@ -1320,38 +1336,58 @@ class _WeekStrip extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Text('${today.year}년 ${today.month}월',
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: loadFailed ? onRetry : onOpenRecords,
-                  child: Text(
+        SectionTitle(
+          title: '${today.year}년 ${today.month}월',
+          trailing: InkWell(
+            onTap: loadFailed ? onRetry : onOpenRecords,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
                     loadFailed ? '다시 불러오기' : '전체 기록 $recordCount개 보기',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.woodText),
                   ),
-                ),
+                  const Icon(Icons.chevron_right_rounded, size: 18, color: JdColors.woodText),
+                ],
               ),
             ),
-          ],
+          ),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            for (var i = 0; i < 7; i++)
-              Expanded(child: _day(monday.add(Duration(days: i)), _dow[i])),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Text(
-          loadFailed ? '기록을 불러오지 못했어요' : '오늘 $todayCount번 완료',
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        PixelPanel(
+          padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  for (var i = 0; i < 7; i++)
+                    Expanded(child: _day(monday.add(Duration(days: i)), _weekdays[i])),
+                ],
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+                child: Divider(height: 1, color: JdColors.seam),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        loadFailed ? '기록을 불러오지 못했어요' : '오늘 $todayCount번 완료',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: JdColors.ink),
+                      ),
+                    ),
+                    if (!loadFailed) _Legend(),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -1361,27 +1397,99 @@ class _WeekStrip extends StatelessWidget {
     final records = byDay[day] ?? const <MissionRecord>[];
     final missions = records.map((r) => r.missionId).toSet().length;
     final isToday = day == today;
-    final strong = isToday ? JdColors.ink : JdColors.faint;
     final future = day.isAfter(today);
+    final strong = isToday ? JdColors.ink : JdColors.faint;
     return InkWell(
       onTap: future ? null : () => onOpenDay(day),
-      borderRadius: BorderRadius.circular(12),
       child: Column(
         children: [
-          Text(dow, style: TextStyle(fontSize: 12, color: strong)),
+          Text(dow, style: TextStyle(fontSize: 11, color: strong, fontWeight: isToday ? FontWeight.w800 : FontWeight.w400)),
           const SizedBox(height: 6),
-          DayBlob(
-            count: missions,
-            full: missions >= kDailyMissionCount,
-            today: isToday,
-            future: future,
-          ),
-          const SizedBox(height: 6),
+          _DayCell(count: missions, full: missions >= kDailyMissionCount, today: isToday, future: future),
+          const SizedBox(height: 5),
           Text('${day.day}',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: strong,
-                  fontWeight: isToday ? FontWeight.w700 : FontWeight.w400)),
+              style: TextStyle(fontSize: 12, color: strong, fontWeight: isToday ? FontWeight.w800 : FontWeight.w400)),
+        ],
+      ),
+    );
+  }
+}
+
+/// 날짜 칸: 아무것도 안 한 날은 빈 칸, 하면 나무색이 짙어지고, 다 하면 초록 체크.
+class _DayCell extends StatelessWidget {
+  const _DayCell({required this.count, required this.full, required this.today, required this.future});
+
+  final int count;
+  final bool full;
+  final bool today;
+  final bool future;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 32.0;
+    final done = count > 0 && !future;
+    final Color bg = !done ? JdColors.paper : (full ? JdColors.leaf : (count >= 2 ? JdColors.wood : JdColors.woodLight));
+    final Color edge = today ? JdColors.ink : (done ? Colors.transparent : JdColors.seam);
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: ShapeDecoration(
+        color: bg,
+        shape: PixelBorder(step: 3, steps: 1, side: BorderSide(color: edge, width: today ? 2 : 1.5)),
+      ),
+      child: !done
+          ? null
+          : full
+              ? const PixelGlyph(rows: PixelCheck.markRows, palette: {'w': Colors.white}, size: 18)
+              : Text('$count',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: count >= 2 ? Colors.white : JdColors.woodText)),
+    );
+  }
+}
+
+/// 날짜 칸 색 설명.
+class _Legend extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    Widget swatch(Color c) => Container(
+          width: 10,
+          height: 10,
+          margin: const EdgeInsets.only(left: 3),
+          decoration: ShapeDecoration(color: c, shape: const PixelBorder(step: 1.5, steps: 1)),
+        );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('적게', style: TextStyle(fontSize: 11, color: JdColors.faint)),
+        const SizedBox(width: 2),
+        swatch(JdColors.woodLight),
+        swatch(JdColors.wood),
+        swatch(JdColors.leaf),
+        const SizedBox(width: 4),
+        const Text('다', style: TextStyle(fontSize: 11, color: JdColors.faint)),
+      ],
+    );
+  }
+}
+
+/// 미션 줄을 묶는 판. 줄 사이에 얇은 선을 넣는다.
+class _MissionPanel extends StatelessWidget {
+  const _MissionPanel({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return PixelPanel(
+      child: Column(
+        children: [
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0) const Divider(height: 1, indent: 52, color: JdColors.seam),
+            children[i],
+          ],
         ],
       ),
     );
@@ -1410,43 +1518,146 @@ class _MissionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 52),
+        constraints: const BoxConstraints(minHeight: 58),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+          child: Row(
+            children: [
+              PixelCheck(checked: completed),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(mission.title,
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: completed ? FontWeight.w400 : FontWeight.w600,
+                            color: completed ? JdColors.faint : JdColors.ink,
+                            decoration: completed ? TextDecoration.lineThrough : null,
+                            decorationColor: JdColors.seamDark)),
+                    if (completed)
+                      const Text('오늘 완료했어요 · 다시 해도 좋아요',
+                          style: TextStyle(fontSize: 12, color: JdColors.faint))
+                    else if (subtitle != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(subtitle!,
+                            style: const TextStyle(fontSize: 12, color: JdColors.woodText, fontWeight: FontWeight.w600)),
+                      ),
+                  ],
+                ),
+              ),
+              if (trailing != null)
+                trailing!
+              else if (mission.timerMinutes != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.timer_outlined, size: 14, color: JdColors.faint),
+                      const SizedBox(width: 3),
+                      Text('${mission.timerMinutes}분',
+                          style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 내 미션 추가 줄. 비어 있으면 설명을 함께 보여 준다.
+class _AddMissionRow extends StatelessWidget {
+  const _AddMissionRow({required this.onTap, this.hint});
+  final VoidCallback onTap;
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         child: Row(
           children: [
-            CheckSquare(checked: completed),
-            const SizedBox(width: 12),
+            Container(
+              width: 24,
+              height: 24,
+              decoration: const ShapeDecoration(
+                shape: PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.seamDark, width: 1.5)),
+              ),
+              child: const Icon(Icons.add, size: 16, color: JdColors.woodText),
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(mission.title,
-                      style: TextStyle(
-                          fontSize: 15,
-                          color: completed ? JdColors.faint : JdColors.ink)),
-                  if (completed)
-                    const Text('오늘 완료했어요 · 다시 해도 좋아요',
-                        style: TextStyle(fontSize: 12, color: JdColors.faint))
-                  else if (subtitle != null)
-                    Text(subtitle!,
-                        style: const TextStyle(fontSize: 12, color: JdColors.subtle)),
+                  const Text('내 미션 추가',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: JdColors.woodText)),
+                  if (hint != null)
+                    Text(hint!, style: const TextStyle(fontSize: 12, color: JdColors.faint)),
                 ],
               ),
             ),
-            if (trailing != null)
-              trailing!
-            else if (mission.timerMinutes != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                    color: JdColors.panel,
-                    borderRadius: BorderRadius.circular(6)),
-                child: Text('${mission.timerMinutes}분',
-                    style:
-                        const TextStyle(fontSize: 12, color: JdColors.subtle)),
-              ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 미래의 나에게 편지 쓰기.
+class _LetterRow extends StatelessWidget {
+  const _LetterRow({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const shape = PixelBorder(step: 3, steps: 2, side: BorderSide(color: JdColors.seam, width: 1.5));
+    return Material(
+      color: JdColors.paper,
+      shape: shape,
+      child: InkWell(
+        customBorder: shape,
+        onTap: onTap,
+        child: const Padding(
+          padding: EdgeInsets.fromLTRB(14, 12, 10, 12),
+          child: Row(
+            children: [
+              PixelGlyph(
+                rows: [
+                  'oooooooooo',
+                  'owwwwwwwwo',
+                  'oowwwwwwoo',
+                  'owowwwwowo',
+                  'owwoooowwo',
+                  'owwwwwwwwo',
+                  'oooooooooo',
+                ],
+                palette: {'o': JdColors.woodText, 'w': JdColors.cream},
+                size: 16,
+              ),
+              SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('미래의 나에게 편지 쓰기',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JdColors.ink)),
+                    Text('일주일 뒤에 방으로 도착해요', style: TextStyle(fontSize: 12, color: JdColors.faint)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: JdColors.faint),
+            ],
+          ),
         ),
       ),
     );
