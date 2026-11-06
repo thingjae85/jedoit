@@ -325,7 +325,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
 
   List<Widget> _before() => [
         Text(_tidy ? '정리를 시작하기 전에 지금 모습을 찍어 두세요. 끝나면 후 사진을 올려 나란히 보여 줘요.' : '시작하기 전에 한 장 찍어 두세요. 다 하면 후 사진을 올려 나란히 보여 줘요.',
-            style: TextStyle(fontSize: 15, color: JdColors.subtle)),
+            style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 12),
         if (_beforePhoto != null) _photoPreview(_beforePhoto!, label: '전'),
         OutlinedButton.icon(
@@ -347,7 +347,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   List<Widget> _after() {
     final before = _savedBefore!;
     return [
-      Text(_tidy ? '정리를 마쳤으면 같은 자리를 다시 찍어 주세요.' : '다 했으면 한 장 더 찍어 주세요.', style: TextStyle(fontSize: 15, color: JdColors.subtle)),
+      Text(_tidy ? '정리를 마쳤으면 같은 자리를 다시 찍어 주세요.' : '다 했으면 한 장 더 찍어 주세요.', style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
       const SizedBox(height: 12),
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,

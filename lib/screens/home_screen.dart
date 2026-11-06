@@ -1191,10 +1191,10 @@ class _HexIconPainter extends CustomPainter {
       return;
     }
     const r = 4.6;
-    final w = r * 1.732;
-    _hex(canvas, c + Offset(-w / 2, -r * 0.75), r, paint);
-    _hex(canvas, c + Offset(w / 2, -r * 0.75), r, paint);
-    _hex(canvas, c + Offset(0, r * 0.75), r, paint);
+    const w = r * 1.732;
+    _hex(canvas, c + const Offset(-w / 2, -r * 0.75), r, paint);
+    _hex(canvas, c + const Offset(w / 2, -r * 0.75), r, paint);
+    _hex(canvas, c + const Offset(0, r * 0.75), r, paint);
   }
 
   @override
