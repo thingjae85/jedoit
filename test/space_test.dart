@@ -291,7 +291,7 @@ void main() {
     await tester.tap(find.text('꾸미기'));
     await tester.pumpAndSettle();
     expect(find.text('코인 30'), findsOneWidget);
-    final buyClock = find.descendant(of: find.widgetWithText(ListTile, '벽시계'), matching: find.text('사기'));
+    final buyClock = find.descendant(of: find.byKey(const ValueKey('shop-clock')), matching: find.text('사기'));
     await tester.tap(buyClock);
     await tester.pumpAndSettle();
     expect(find.text('코인 10'), findsOneWidget);
@@ -313,9 +313,9 @@ void main() {
     // 캐릭터도 끌어서 옮긴다 (바닥에서 오른쪽 아래로 = x+).
     final (bx, by) = buddySpot('bedroom', thingsIn('bedroom', 3, (await SpaceStore().load()).decor));
     final (bl, bt, bw, bh) = buddyRect(bx, by);
-    await tester.dragFrom(origin + Offset((bl + bw / 2) * s, (bt + bh / 2) * s), Offset(8 * s, 4 * s));
+    await tester.dragFrom(origin + Offset((bl + bw / 2) * s, (bt + bh / 2) * s), Offset(16 * s, 8 * s));
     await tester.pumpAndSettle();
-    expect((await SpaceStore().load()).decor.layoutOf('bedroom').buddy, (bx + 4, by));
+    expect((await SpaceStore().load()).decor.layoutOf('bedroom').buddy, (bx + 8, by));
 
     // 시계를 다시 눌러 고르고, 보관함에 넣었다가 다시 놓기
     final (l2, top2, w2, h2) = decorThing('clock', placed.$1, placed.$2 + 5)!.rect();
@@ -325,12 +325,12 @@ void main() {
     await tester.tap(find.text('보관함에'));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.roomOf('clock'), isNull);
-    await tester.tap(find.descendant(of: find.widgetWithText(ListTile, '벽시계'), matching: find.text('놓기')));
+    await tester.tap(find.descendant(of: find.byKey(const ValueKey('stored-d:clock')), matching: find.text('놓기')));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.roomOf('clock'), 'bedroom');
     // 40코인짜리 무드등은 못 산다.
     final lampButton = find.ancestor(
-        of: find.descendant(of: find.widgetWithText(ListTile, '무드등'), matching: find.text('사기')),
+        of: find.descendant(of: find.byKey(const ValueKey('shop-moodlamp')), matching: find.text('사기')),
         matching: find.byWidgetPredicate((w) => w is ButtonStyleButton));
     expect(tester.widget<ButtonStyleButton>(lampButton).onPressed, isNull);
 

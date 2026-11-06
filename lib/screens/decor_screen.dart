@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -8,6 +10,7 @@ import '../models/space.dart';
 import '../models/space_art.dart';
 import '../services/space_store.dart';
 import '../theme.dart';
+import '../widgets/pixel_ui.dart';
 import '../widgets/space_view.dart';
 
 /// 꾸미기: 방 안 가구·소품·캐릭터를 손가락으로 집어서 아무 데나 끌어다 놓는다.
@@ -265,119 +268,143 @@ class _DecorScreenState extends State<DecorScreen> {
         if (_decor.roomOf(id) == null) decorThing(id, 0, 0),
     ].whereType<PlacedThing>().toList();
 
+    final bg = widget.night ? JdColors.roomNavyDeep : JdColors.roomNavy;
+    final shop = [for (final item in kDecorItems) if (!_decor.owned.contains(item.id)) item];
+
     return Scaffold(
       appBar: AppBar(
         title: Text('꾸미기 · ${room?.name ?? ''}'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Center(
-              child: Text('코인 $_coins',
-                  key: const Key('decorCoins'),
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFFC29A2E))),
+            child: PixelPanel(
+              color: JdColors.paperDeep,
+              border: JdColors.seam,
+              step: 2,
+              padding: const EdgeInsets.fromLTRB(9, 6, 11, 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const PixelCoin(size: 14),
+                  const SizedBox(width: 6),
+                  Text('코인 $_coins',
+                      key: const Key('decorCoins'),
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: JdColors.woodText,
+                          fontFeatures: [FontFeature.tabularFigures()])),
+                ],
+              ),
             ),
           ),
         ],
       ),
       body: Column(
         children: [
+          // 방 + 아래 작업대 (고른 것 이름, 보관함에 넣기)
           Container(
             margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: widget.night ? const Color(0xFF141F2E) : const Color(0xFF22344A),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 360),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  // 손가락을 댄 곳에서 바로 집는다 (조금 움직인 뒤가 아니라).
-                  dragStartBehavior: DragStartBehavior.down,
-                  onTapUp: _onTapUp,
-                  onPanStart: _onPanStart,
-                  onPanUpdate: _onPanUpdate,
-                  onPanEnd: _onPanEnd,
-                  onPanCancel: _onPanEnd,
-                  child: RoomPicture(
-                    key: _roomKey,
-                    roomId: widget.roomId,
-                    stage: _stage,
-                    buddy: _buddy,
-                    photo: widget.photo,
-                    night: widget.night,
-                    decor: _decor,
-                    things: things,
-                    buddyAt: buddyAt,
-                    selectedKey: _selected,
-                    selectionValid: valid,
-                    lifted: drag != null,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          _selectionBar(),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            clipBehavior: Clip.antiAlias,
+            decoration: ShapeDecoration(color: bg, shape: const PixelBorder(step: 4, steps: 2)),
+            child: Column(
               children: [
-                _header('캐릭터'),
-                Row(
-                  children: [
-                    for (final b in kBuddies)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8, bottom: 8),
-                        child: ChoiceChip(
-                          avatar: Image.asset(b.asset, filterQuality: FilterQuality.none),
-                          label: Text(b.name),
-                          selected: b.id == _buddy.id,
-                          onSelected: (_) => _pickBuddy(b),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                  child: Center(
+                    child: ConstrainedBox(
+                      // 화면이 낮으면 방을 조금 줄여서 아래 목록이 보이게 한다.
+                      constraints: BoxConstraints(maxWidth: math.min(340, MediaQuery.sizeOf(context).height * 0.38)),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        // 손가락을 댄 곳에서 바로 집는다 (조금 움직인 뒤가 아니라).
+                        dragStartBehavior: DragStartBehavior.down,
+                        onTapUp: _onTapUp,
+                        onPanStart: _onPanStart,
+                        onPanUpdate: _onPanUpdate,
+                        onPanEnd: _onPanEnd,
+                        onPanCancel: _onPanEnd,
+                        child: RoomPicture(
+                          key: _roomKey,
+                          roomId: widget.roomId,
+                          stage: _stage,
+                          buddy: _buddy,
+                          photo: widget.photo,
+                          night: widget.night,
+                          decor: _decor,
+                          things: things,
+                          buddyAt: buddyAt,
+                          selectedKey: _selected,
+                          selectionValid: valid,
+                          lifted: drag != null,
                         ),
                       ),
+                    ),
+                  ),
+                ),
+                _selectionBar(),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
+              children: [
+                const SectionTitle(title: '캐릭터', note: '방에서 끌어서 자리를 옮길 수 있어요'),
+                Row(
+                  children: [
+                    for (final b in kBuddies) ...[
+                      _BuddyTile(buddy: b, selected: b.id == _buddy.id, onTap: () => _pickBuddy(b)),
+                      const SizedBox(width: 10),
+                    ],
                   ],
                 ),
                 if (stored.isNotEmpty) ...[
-                  _header('보관함'),
-                  for (final t in stored)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: _thumb(t.day),
-                      title: Text(t.name),
-                      subtitle: Text(
-                          t.isDecor && !_canPlace ? '방이 조금 더 회복되면 놓을 수 있어요' : '보관함에 있어요',
-                          style: const TextStyle(fontSize: 12)),
-                      trailing: FilledButton.tonal(
-                        // 앱 기본 버튼은 가로를 꽉 채우므로, 목록 오른쪽에 들어가게 크기를 정한다.
-                        style: _tileButton,
+                  const SizedBox(height: 22),
+                  SectionTitle(title: '보관함', note: '${stored.length}개'),
+                  _grid([
+                    for (final t in stored)
+                      _ItemCard(
+                        key: ValueKey('stored-${t.key}'),
+                        sprite: t.day,
+                        name: t.name,
+                        meta: Text(t.isDecor && !_canPlace ? '방이 조금 더 회복되면 놓을 수 있어요' : '보관함에 있어요',
+                            maxLines: 2, style: const TextStyle(fontSize: 11, color: JdColors.faint)),
+                        action: '놓기',
                         onPressed: t.isDecor && !_canPlace ? null : () => _takeOut(t),
-                        child: const Text('놓기'),
                       ),
-                    ),
-                  const SizedBox(height: 8),
+                  ]),
                 ],
-                _header('상점'),
-                for (final item in kDecorItems)
-                  if (!_decor.owned.contains(item.id))
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: _thumb(kDecorArt[item.id]?.$4),
-                      title: Text(item.name),
-                      subtitle: Text('${item.price} 코인 · ${item.spot == DecorSpot.wall ? '벽' : '바닥'}',
-                          style: const TextStyle(fontSize: 12)),
-                      trailing: FilledButton.tonal(
-                        style: _tileButton,
-                        onPressed: _coins >= item.price ? () => _buy(item) : null,
-                        child: const Text('사기'),
-                      ),
-                    ),
-                if (kDecorItems.every((i) => _decor.owned.contains(i.id)))
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
+                const SizedBox(height: 22),
+                const SectionTitle(title: '상점', note: '하나씩만 살 수 있어요'),
+                if (shop.isEmpty)
+                  const PixelPanel(
+                    padding: EdgeInsets.all(16),
                     child: Text('소품을 다 모았어요!', style: TextStyle(color: JdColors.subtle)),
-                  ),
-                const SizedBox(height: 12),
+                  )
+                else
+                  _grid([
+                    for (final item in shop)
+                      _ItemCard(
+                        key: ValueKey('shop-${item.id}'),
+                        sprite: kDecorArt[item.id]?.$4,
+                        name: item.name,
+                        meta: Row(
+                          children: [
+                            const PixelCoin(size: 11),
+                            const SizedBox(width: 4),
+                            Text('${item.price}',
+                                style: const TextStyle(
+                                    fontSize: 12, fontWeight: FontWeight.w800, color: JdColors.woodText)),
+                            Text(' · ${item.spot == DecorSpot.wall ? '벽' : '바닥'}',
+                                style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                          ],
+                        ),
+                        action: '사기',
+                        onPressed: _coins >= item.price ? () => _buy(item) : null,
+                      ),
+                  ]),
+                const SizedBox(height: 18),
                 const Text('코인은 미션을 하면 10개씩 생겨요. 방이 자라는 건 코인과 상관없어요.',
                     textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: JdColors.faint)),
               ],
@@ -388,46 +415,188 @@ class _DecorScreenState extends State<DecorScreen> {
     );
   }
 
-  static final _tileButton = FilledButton.styleFrom(minimumSize: const Size(64, 40));
+  /// 카드를 두 줄(넓으면 세 줄)로 늘어놓는다.
+  Widget _grid(List<Widget> cards) => LayoutBuilder(builder: (context, c) {
+        const gap = 10.0;
+        final cols = c.maxWidth >= 520 ? 3 : 2;
+        final w = (c.maxWidth - gap * (cols - 1)) / cols;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [for (final card in cards) SizedBox(width: w, child: card)],
+        );
+      });
 
-  Widget _header(String text) => Padding(
-        padding: const EdgeInsets.only(top: 4, bottom: 4),
-        child: Text(text, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-      );
-
-  /// 목록 왼쪽의 생김새 미리보기: 방에 놓았을 때 그림을 그대로 줄여서 보여 준다.
-  Widget _thumb(Sprite? sprite) => Container(
-        width: 52,
-        height: 52,
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: const Color(0xFFEDE6D8), borderRadius: BorderRadius.circular(12)),
-        child: sprite == null
-            ? const Icon(Icons.category_outlined, color: JdColors.solo, size: 22)
-            : Image.asset(sprite.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
-      );
-
-  /// 고른 것 이름과 보관함에 넣기. 아무것도 안 골랐으면 쓰는 법.
+  /// 방 아래 작업대: 고른 것 이름과 보관함에 넣기. 아무것도 안 골랐으면 쓰는 법.
   Widget _selectionBar() {
     final key = _selected;
     final t = _thing(key);
-    if (key == null || (t == null && key != _buddyKey)) {
-      return const Padding(
-        padding: EdgeInsets.fromLTRB(16, 10, 16, 6),
-        child: Text('가구·소품·캐릭터를 손가락으로 집어서 끌어다 놓아 보세요.',
-            style: TextStyle(fontSize: 13, color: JdColors.subtle)),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 8, 0),
+    final picked = key != null && (t != null || key == _buddyKey);
+    return Container(
+      height: 48,
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.fromLTRB(14, 0, 8, 0),
+      color: Colors.black.withValues(alpha: 0.18),
       child: Row(
         children: [
-          Expanded(
-            child: Text(t?.name ?? _buddy.name,
-                maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          if (!picked)
+            const Expanded(
+              child: Row(
+                children: [
+                  Icon(Icons.pan_tool_alt_outlined, size: 16, color: Color(0xFFB9C6D6)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('가구·소품·캐릭터를 손가락으로 집어서 끌어다 놓아 보세요.',
+                        maxLines: 2, style: TextStyle(fontSize: 12, height: 1.3, color: Color(0xFFD5DEE8))),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            if (t != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Image.asset(t.day.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Image.asset(_buddy.asset, width: 22, height: 23, filterQuality: FilterQuality.none),
+              ),
+            Expanded(
+              child: Text(t?.name ?? _buddy.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white)),
+            ),
+            if (t != null)
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: JdColors.woodLight),
+                onPressed: () => _store(t),
+                icon: const Icon(Icons.inventory_2_outlined, size: 16),
+                label: const Text('보관함에'),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 캐릭터 고르기 칸.
+class _BuddyTile extends StatelessWidget {
+  const _BuddyTile({required this.buddy, required this.selected, required this.onTap});
+
+  final Buddy buddy;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = PixelBorder(
+      step: 3,
+      steps: 2,
+      side: BorderSide(color: selected ? JdColors.ink : JdColors.seam, width: selected ? 2 : 1.5),
+    );
+    return Material(
+      color: selected ? JdColors.cream : JdColors.paperDeep,
+      shape: shape,
+      child: InkWell(
+        customBorder: shape,
+        onTap: onTap,
+        child: SizedBox(
+          width: 88,
+          height: 92,
+          child: Stack(
+            children: [
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset(buddy.asset, width: 44, height: 46, filterQuality: FilterQuality.none),
+                    const SizedBox(height: 6),
+                    Text(buddy.name,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                            color: JdColors.ink)),
+                  ],
+                ),
+              ),
+              if (selected)
+                const Positioned(
+                  right: 6,
+                  top: 6,
+                  child: PixelCheck(checked: true, size: 16),
+                ),
+            ],
           ),
-          if (t != null) TextButton(onPressed: () => _store(t), child: const Text('보관함에')),
-          if (t == null) const SizedBox(height: 48),
+        ),
+      ),
+    );
+  }
+}
+
+/// 상점·보관함 카드: 방에 놓았을 때 그림을 크게 보여 주고, 아래에 이름과 버튼.
+class _ItemCard extends StatelessWidget {
+  const _ItemCard({
+    super.key,
+    required this.sprite,
+    required this.name,
+    required this.meta,
+    required this.action,
+    required this.onPressed,
+  });
+
+  final Sprite? sprite;
+  final String name;
+  final Widget meta;
+  final String action;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return PixelPanel(
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            height: 76,
+            padding: const EdgeInsets.all(10),
+            decoration: const ShapeDecoration(color: JdColors.woodLight, shape: PixelBorder(step: 2, steps: 1)),
+            child: sprite == null
+                ? const Icon(Icons.category_outlined, color: JdColors.woodText)
+                : Image.asset(sprite!.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: JdColors.ink)),
+          ),
+          const SizedBox(height: 2),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: meta),
+          const SizedBox(height: 8),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 36),
+              backgroundColor: JdColors.ink,
+              foregroundColor: JdColors.cream,
+              disabledBackgroundColor: JdColors.seam,
+              disabledForegroundColor: JdColors.faint,
+              shape: const PixelBorder(step: 2, steps: 1),
+              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+            ),
+            onPressed: onPressed,
+            child: Text(action),
+          ),
         ],
       ),
     );
