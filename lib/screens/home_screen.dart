@@ -9,6 +9,7 @@ import '../models/mission_record.dart';
 import '../models/return_days.dart';
 import '../models/room.dart';
 import '../models/space.dart';
+import '../models/space_art.dart';
 import '../services/account_service.dart';
 import '../services/draft_store.dart';
 import '../services/room_service.dart';
@@ -353,6 +354,10 @@ class _HomeScreenState extends State<HomeScreen> {
       await _showNewRoom(event);
       if (!mounted) return;
     }
+    if (event != null && event.roomId == 'bedroom' && event.stage == kDecorMinStage['bedroom']) {
+      await _showDecorOpened(count);
+      if (!mounted) return;
+    }
     final offerSignIn = widget.account != null && !widget.account!.signedIn;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -376,6 +381,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             SizedBox(
               width: 200,
+              height: 200 * kRoomArtHeight / kRoomArtWidth,
               child: RoomPicture(roomId: event.roomId, stage: 0, buddy: buddyById(_prefs.buddy)),
             ),
             const SizedBox(height: 12),
@@ -387,6 +393,44 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  /// 첫 미션으로 상자를 치우면 꾸미기가 열린다. 바로 꾸미러 갈 수 있게 묻는다.
+  Future<void> _showDecorOpened(int count) async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('꾸미기가 열렸어요!', textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 200,
+              height: 200 * kRoomArtHeight / kRoomArtWidth,
+              child: RoomPicture(
+                  roomId: 'bedroom',
+                  stage: kDecorMinStage['bedroom']!,
+                  buddy: buddyById(_prefs.buddy),
+                  decor: _prefs.decor,
+                  night: isNightTime(DateTime.now())),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _prefs.decor.owned.isEmpty
+                  ? '상자를 다 치웠어요.\n이제 상점에서 산 걸로 방을 꾸밀 수 있어요.'
+                  : '상자를 다 치웠어요.\n미리 사 둔 물건은 보관함에 있어요.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('나중에')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('꾸미러 가기')),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+    await _openDecor(SpaceState.of(count), 'bedroom', isNightTime(DateTime.now()));
   }
 
   Future<void> _openDecor(SpaceState state, String roomId, bool night) async {

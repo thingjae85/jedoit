@@ -274,11 +274,11 @@ void main() {
     expect(moved, isNot((20, 25)));
   });
 
-  test('침실은 상자를 풀고 나서(2단계)부터 꾸밀 수 있다', () {
-    expect(canDecorate('bedroom', 1), isFalse);
-    expect(canDecorate('bedroom', 2), isTrue);
+  test('침실은 첫 미션으로 상자를 치우면(1단계) 꾸밀 수 있다', () {
+    expect(canDecorate('bedroom', 0), isFalse);
+    expect(canDecorate('bedroom', 1), isTrue);
     expect(canDecorate('study', 0), isTrue);
-    expect(thingsIn('bedroom', 1, const DecorData()), isEmpty, reason: '상자 단계엔 옮길 가구가 없다');
+    expect(thingsIn('bedroom', 0, const DecorData()), isEmpty, reason: '상자 단계엔 옮길 가구가 없다');
   });
 
   testWidgets('꾸미기에서 코인으로 소품을 사면 방에 놓이고 남은 코인이 줄어든다', (tester) async {
@@ -296,7 +296,13 @@ void main() {
 
     await tester.tap(find.text('꾸미기'));
     await tester.pumpAndSettle();
+    // 꾸미기가 열린 뒤 처음 들어오면 쓰는 법을 한 번 보여 준다.
+    expect(find.text('꾸미기는 이렇게 해요'), findsOneWidget);
+    await tester.tap(find.text('시작하기'));
+    await tester.pumpAndSettle();
     expect(find.text('코인 30'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('mode-상점')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('tab-벽 장식')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('shop-clock')));
@@ -306,7 +312,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('코인 10'), findsOneWidget);
     // 산 소품은 바로 빈 자리에 놓이고 골라진 상태가 된다.
-    expect(find.text('벽시계'), findsOneWidget);
+    expect(find.byKey(const Key('putAway')), findsOneWidget);
+    expect(tester.widget<DecorSlot>(find.byKey(const ValueKey('shop-clock'))).status, '보유');
     final placed = (await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'];
     expect(placed, isNotNull);
 
@@ -320,7 +327,7 @@ void main() {
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'], (placed.$1, placed.$2 + 5));
     // 되돌리기 하면 원래 자리로, 다시 끌어 올린다.
-    await tester.tap(find.byTooltip('되돌리기'));
+    await tester.tap(find.byKey(const Key('undo')));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'], placed);
     await tester.dragFrom(grab, Offset(0, -10 * s));
@@ -338,14 +345,20 @@ void main() {
     final (l2, top2, w2, h2) = decorThing('clock', placed.$1, placed.$2 + 5)!.rect();
     await tester.tapAt(origin + Offset((l2 + w2 / 2) * s, (top2 + h2 / 2) * s));
     await tester.pumpAndSettle();
-    expect(find.text('벽시계'), findsOneWidget);
-    await tester.tap(find.byTooltip('보관함에 넣기'));
+    expect(find.byKey(const Key('putAway')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('putAway')));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.roomOf('clock'), isNull);
+    await tester.tap(find.byKey(const ValueKey('mode-보관함')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<DecorSlot>(find.byKey(const ValueKey('stored-d:clock'))).status, '보관 중');
     await tester.tap(find.byKey(const ValueKey('stored-d:clock')));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.roomOf('clock'), 'bedroom');
-    // 40코인짜리 무드등은 못 산다 (가구 탭).
+    expect(tester.widget<DecorSlot>(find.byKey(const ValueKey('placed-d:clock'))).status, '방에 있어요');
+    // 40코인짜리 무드등은 못 산다 (상점 · 가구 탭).
+    await tester.tap(find.byKey(const ValueKey('mode-상점')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('tab-가구')));
     await tester.pumpAndSettle();
     expect(tester.widget<DecorSlot>(find.byKey(const ValueKey('shop-moodlamp'))).onTap, isNull);
@@ -443,7 +456,7 @@ void main() {
     expect(saved.missionId, 'discovery');
     expect(saved.theme, rerolled.id);
     expect(saved.hasPhoto, isTrue);
-    expect(find.textContaining('창문으로 햇빛이 들어와요'), findsOneWidget);
+    expect(find.textContaining('상자를 치웠어요'), findsOneWidget);
     expect(find.textContaining('사진이 벽 액자에 걸렸어요'), findsOneWidget);
   });
 
@@ -463,6 +476,8 @@ void main() {
     await tester.tap(find.text('영양제 먹기'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '했어요'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('나중에')); // 첫 미션이면 꾸미기가 열렸다는 창
     await tester.pumpAndSettle();
     expect((await repo.loadAll()).single.title, '영양제 먹기');
 
@@ -562,10 +577,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('꾸미기'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('시작하기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('mode-상점')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('tab-벽지·바닥')));
     await tester.pumpAndSettle();
     expect(find.text('벽지·바닥'), findsOneWidget, reason: '고른 탭은 이름이 보인다');
-    final buyMint = find.byKey(const ValueKey('surface-wall_mint'));
+    final buyMint = find.byKey(const ValueKey('shop-wall_mint'));
     await tester.ensureVisible(buyMint);
     await tester.tap(buyMint);
     await tester.pumpAndSettle();
@@ -577,11 +596,75 @@ void main() {
       findsOneWidget,
     );
 
+    // 산 벽지는 보관함에서 쓰는 중으로 보인다.
+    await tester.tap(find.byKey(const ValueKey('mode-보관함')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<DecorSlot>(find.byKey(const ValueKey('surface-wall_mint'))).status, '쓰는 중');
+
+    // 캐릭터는 보관함에만 있고, 고른 친구는 '선택됨'.
     await tester.tap(find.byKey(const ValueKey('tab-캐릭터')));
     await tester.pumpAndSettle();
+    expect(tester.widget<DecorSlot>(find.byKey(const ValueKey('buddy-bear'))).status, '선택됨');
     await tester.tap(find.byKey(const ValueKey('buddy-hamster')));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).buddy, 'hamster');
+    expect(tester.widget<DecorSlot>(find.byKey(const ValueKey('buddy-hamster'))).status, '선택됨');
+    await tester.tap(find.byKey(const ValueKey('mode-상점')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('tab-캐릭터')), findsNothing);
+  });
+
+  testWidgets('꾸미기가 열리기 전에도 상점에서 사 두고, 첫 미션을 하면 팝업과 가이드를 거쳐 꺼내 놓는다', (tester) async {
+    _useTallScreen(tester);
+    final repo = LocalRecordRepository();
+    await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('꾸미기'));
+    await tester.pumpAndSettle();
+    expect(find.text('꾸미기는 이렇게 해요'), findsNothing, reason: '열리기 전엔 가이드 대신 안내 띠');
+    expect(find.text('미션을 하나 하면 꾸미기가 열려요'), findsOneWidget);
+    // 상점부터 열린다.
+    await tester.tap(find.byKey(const ValueKey('tab-벽 장식')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('shop-clock')));
+    await tester.pumpAndSettle();
+    var decor = (await SpaceStore().load()).decor;
+    expect(decor.owned, contains('clock'));
+    expect(decor.roomOf('clock'), isNull, reason: '아직은 보관함에만');
+    await tester.tap(find.byKey(const ValueKey('mode-보관함')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<DecorSlot>(find.byKey(const ValueKey('stored-d:clock'))).onTap, isNull);
+    await tester.tap(find.byTooltip('뒤로'));
+    await tester.pumpAndSettle();
+
+    // 첫 미션 → 상자를 치우고 꾸미기가 열린다.
+    await tester.tap(find.text('물 한 잔 마시기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '했어요'));
+    await tester.pumpAndSettle();
+    expect(find.text('꾸미기가 열렸어요!'), findsOneWidget);
+    expect(find.textContaining('미리 사 둔 물건은 보관함에 있어요'), findsOneWidget);
+    await tester.tap(find.text('꾸미러 가기'));
+    await tester.pumpAndSettle();
+    expect(find.text('꾸미기는 이렇게 해요'), findsOneWidget);
+    await tester.tap(find.text('시작하기'));
+    await tester.pumpAndSettle();
+    expect(find.text('미션을 하나 하면 꾸미기가 열려요'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('tab-벽 장식')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stored-d:clock')));
+    await tester.pumpAndSettle();
+    expect((await SpaceStore().load()).decor.roomOf('clock'), 'bedroom');
+    // 가이드는 한 번만, 다시 보려면 물음표.
+    await tester.tap(find.byTooltip('뒤로'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('꾸미기'));
+    await tester.pumpAndSettle();
+    expect(find.text('꾸미기는 이렇게 해요'), findsNothing);
+    await tester.tap(find.byTooltip('도움말'));
+    await tester.pumpAndSettle();
+    expect(find.text('꾸미기는 이렇게 해요'), findsOneWidget);
   });
 }
 

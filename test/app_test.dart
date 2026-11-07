@@ -182,6 +182,10 @@ void main() {
 
     await tester.tap(doneFinder);
     await tester.pumpAndSettle();
+    // 첫 미션이면 꾸미기가 열렸다고 알려 준다.
+    expect(find.text('꾸미기가 열렸어요!'), findsOneWidget);
+    await tester.tap(find.text('나중에'));
+    await tester.pumpAndSettle();
 
     final saved = await repo.loadAll();
     expect(saved.length, 1);
@@ -191,8 +195,9 @@ void main() {
     expect(find.textContaining('기록을 이 기기에 저장했어요'), findsOneWidget);
     expect(find.textContaining('+10 코인'), findsOneWidget);
     expect(find.text('오늘 1번 완료'), findsOneWidget);
-    // 첫 미션이면 침실에 햇빛이 들어온다.
-    expect(find.textContaining('창문으로 햇빛이 들어와요'), findsOneWidget);
+    // 첫 미션이면 침실 상자를 치우고 꾸미기가 열린다.
+    expect(find.textContaining('상자를 치웠어요'), findsOneWidget);
+
   });
 
   // 8
