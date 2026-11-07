@@ -56,7 +56,13 @@ class _DecorScreenState extends State<DecorScreen> {
   _Drag? _drag;
 
   /// 0 벽지·바닥, 1 벽 장식, 2 가구, 3 캐릭터
-  int _tab = 0;
+  int _tab = 2;
+
+  /// 아래 서랍을 펼쳤는지. 접으면 탭 줄만 남고 방이 커진다.
+  bool _open = true;
+
+  /// 되돌리기용 이전 배치들 (최근 것이 끝).
+  final List<DecorData> _history = [];
   final _roomKey = GlobalKey();
 
   static const _buddyKey = RoomPicture.buddyKey;
@@ -74,8 +80,15 @@ class _DecorScreenState extends State<DecorScreen> {
     return null;
   }
 
-  Future<void> _update(DecorData next) async {
-    setState(() => _decor = next);
+  Future<void> _update(DecorData next, {bool undoable = true}) async {
+    if (identical(next, _decor)) return;
+    setState(() {
+      if (undoable) {
+        _history.add(_decor);
+        if (_history.length > 30) _history.removeAt(0);
+      }
+      _decor = next;
+    });
     try {
       await widget.store.saveDecor(next);
     } catch (_) {
@@ -108,7 +121,21 @@ class _DecorScreenState extends State<DecorScreen> {
     setState(() => _selected = t.key);
   }
 
+  /// 칸을 눌렀을 때: 방에 있으면 고르고, 보관함에 있으면 꺼내 놓는다.
+  Future<void> _tapThing(PlacedThing t, {required bool placed}) async {
+    if (placed) {
+      setState(() => _selected = t.key);
+      return;
+    }
+    if (t.isDecor && !_canPlace) {
+      _snack('방이 조금 더 회복되면 놓을 수 있어요');
+      return;
+    }
+    await _takeOut(t);
+  }
+
   Future<void> _buy(DecorItem item) async {
+    if (!await _confirmBuy(item.name, item.price) || !mounted) return;
     final next = _decor.buy(item, widget.state.coins);
     if (identical(next, _decor)) return;
     await _update(next);
@@ -126,12 +153,38 @@ class _DecorScreenState extends State<DecorScreen> {
   }
 
   Future<void> _surface(SurfaceItem item) async {
+    if (!_decor.hasSurface(item) && (!await _confirmBuy(item.name, item.price) || !mounted)) return;
     var next = _decor.buySurface(item, widget.state.coins);
     if (!next.hasSurface(item)) return;
     next = next.applySurface(widget.roomId, item);
     await _update(next);
     final o = objectParticle(item.name);
     _snack(item.kind == SurfaceKind.wall ? '${item.name}$o 발랐어요' : '${item.name}$o 깔았어요');
+  }
+
+  Future<void> _undo() async {
+    if (_history.isEmpty) return;
+    final prev = _history.removeLast();
+    await _update(prev, undoable: false);
+    // 고른 게 되돌린 뒤에도 방에 있으면 그대로 고른 채로 둔다.
+    if (_selected != _buddyKey && _thing(_selected) == null) setState(() => _selected = null);
+  }
+
+  /// 값이 있는 물건은 한 번 묻고 산다. 0코인이면 바로.
+  Future<bool> _confirmBuy(String name, int price) async {
+    if (price == 0) return true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('$name${objectParticle(name)} 살까요?'),
+        content: Row(children: [const PixelCoin(size: 16), const SizedBox(width: 6), Text('$price코인')]),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('그만두기')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('사기')),
+        ],
+      ),
+    );
+    return ok ?? false;
   }
 
   Future<void> _rename() async {
@@ -258,9 +311,8 @@ class _DecorScreenState extends State<DecorScreen> {
       return;
     }
     final t = _thing(drag.key)!;
-    await _update(t.isDecor
-        ? _decor.placeDecor(t.id, widget.roomId, a, b)
-        : _decor.moveFurniture(widget.roomId, t.id, a, b));
+    await _update(
+        t.isDecor ? _decor.placeDecor(t.id, widget.roomId, a, b) : _decor.moveFurniture(widget.roomId, t.id, a, b));
   }
 
   @override
@@ -277,57 +329,45 @@ class _DecorScreenState extends State<DecorScreen> {
         things = [for (final t in things) t.key == drag.key ? t.at(drag.at.$1, drag.at.$2) : t];
       }
     }
-    final storedThings = [
-      for (final f in storedFurniture(widget.roomId, _stage, _decor))
-        thingsIn(widget.roomId, _stage, _decor.moveFurniture(widget.roomId, f.id, f.x, f.y))
-            .firstWhere((t) => t.key == furnitureKey(f.id)),
-      for (final id in _decor.owned)
-        if (decorById(id) != null && _decor.roomOf(id) == null) decorThing(id, 0, 0),
-    ].whereType<PlacedThing>().toList();
-
-    final bg = widget.night ? JdColors.roomNavyDeep : JdColors.roomNavy;
-    final roomW = math.min(340.0, MediaQuery.sizeOf(context).height * 0.30);
+    final size = MediaQuery.sizeOf(context);
+    final sheetH = _open ? math.max(300.0, size.height * 0.46) : 96.0;
+    final picked = _thing(_selected);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('꾸미기'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: CoinCounter(coins: _coins, textKey: const Key('decorCoins'), prefix: '코인 '),
-          ),
-        ],
-      ),
-      body: Column(
+      backgroundColor: widget.night ? JdColors.roomNavyDeep : const Color(0xFFCDEBF4),
+      body: Stack(
+        fit: StackFit.expand,
         children: [
-          // 방 + 아래 작업대 (고른 것 이름, 보관함에 넣기)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
-            child: GamePanel(
-              color: bg,
-              lip: JdColors.roomNavyDeep,
-              step: 4,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: RoomNameButton(
-                            name: _decor.roomName(widget.roomId),
-                            onDark: true,
-                            size: 14,
-                            onTap: _rename,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Center(
-                    child: ConstrainedBox(
-                      // 화면이 낮으면 방을 조금 줄여서 아래 목록이 보이게 한다.
-                      constraints: BoxConstraints(maxWidth: roomW),
+          // 하늘색 바탕 위 방
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: widget.night
+                      ? const [JdColors.roomNavy, JdColors.roomNavyDeep]
+                      : const [Color(0xFFB7E2F1), Color(0xFFE6F6F8)],
+                ),
+              ),
+            ),
+          ),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: sheetH - 18,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 56, 12, 8),
+                child: LayoutBuilder(builder: (context, c) {
+                  final w = math.min(c.maxWidth, c.maxHeight * kRoomArtWidth / kRoomArtHeight);
+                  return Center(
+                    child: SizedBox(
+                      width: w,
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         // 손가락을 댄 곳에서 바로 집는다 (조금 움직인 뒤가 아니라).
@@ -353,52 +393,129 @@ class _DecorScreenState extends State<DecorScreen> {
                         ),
                       ),
                     ),
-                  ),
-                  _selectionBar(),
-                ],
+                  );
+                }),
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  GameTabs(
-                    selected: _tab,
-                    onSelect: (i) => setState(() => _tab = i),
-                    tabs: [
-                      ('벽지·바닥', TabGlyphs.surface()),
-                      ('벽 장식', TabGlyphs.wall()),
-                      ('가구', TabGlyphs.furniture()),
-                      ('캐릭터', TabGlyphs.buddy()),
-                    ],
-                  ),
-                  Expanded(
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        color: JdColors.cream,
-                        border: Border(
-                          left: BorderSide(color: JdColors.outline, width: 2),
-                          right: BorderSide(color: JdColors.outline, width: 2),
-                          top: BorderSide(color: JdColors.outline, width: 2),
-                        ),
-                      ),
-                      child: ListView(
-                        key: ValueKey('decorTab$_tab'),
-                        padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-                        children: switch (_tab) {
-                          0 => _surfaceTab(),
-                          1 => _thingTab(storedThings.where((t) => t.wall).toList(), DecorSpot.wall),
-                          2 => _thingTab(storedThings.where((t) => !t.wall).toList(), DecorSpot.floor),
-                          _ => _buddyTab(),
-                        },
+          // 위쪽: 뒤로, 방 이름, 코인
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Row(
+                  children: [
+                    _RoundTool(
+                      tooltip: '뒤로',
+                      size: 42,
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: const Icon(Icons.arrow_back_rounded, color: _Soft.brown, size: 22),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: _SoftChip(
+                        child: RoomNameButton(name: _decor.roomName(widget.roomId), size: 14, onTap: _rename),
                       ),
                     ),
-                  ),
-                ],
+                    const Spacer(),
+                    _SoftChip(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const PixelCoin(size: 16),
+                          const SizedBox(width: 6),
+                          Text('코인 $_coins',
+                              key: const Key('decorCoins'), style: gameText(size: 14, color: _Soft.brown)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
+            ),
+          ),
+          // 고른 물건 이름 / 쓰는 법
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 220),
+            left: 136,
+            right: 66,
+            bottom: sheetH + 16,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _SoftChip(
+                child: _selected == null
+                    ? const Text('눌러서 고르고 끌어서 옮겨요',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: _Soft.brown, fontWeight: FontWeight.w600))
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: Image.asset(picked?.day.asset ?? _buddy.asset,
+                                filterQuality: FilterQuality.none, fit: BoxFit.contain),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(picked?.name ?? _buddy.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: gameText(size: 13, color: _Soft.brown)),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+          // 방 위 동그란 도구: 되돌리기, 보관함에 넣기
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 220),
+            left: 14,
+            bottom: sheetH + 6,
+            child: Row(
+              children: [
+                _RoundTool(
+                  tooltip: '되돌리기',
+                  onTap: _history.isEmpty ? null : _undo,
+                  child: const Icon(Icons.undo_rounded, color: _Soft.brown, size: 26),
+                ),
+                const SizedBox(width: 10),
+                _RoundTool(
+                  tooltip: '보관함에 넣기',
+                  onTap: picked == null ? null : () => _store(picked),
+                  child: const Icon(Icons.move_to_inbox_rounded, color: Color(0xFFE0634F), size: 26),
+                ),
+              ],
+            ),
+          ),
+          // 아래 서랍
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: sheetH,
+            child: _sheet(),
+          ),
+          // 서랍 접기·펴기 (서랍 위 가장자리에 걸쳐 있다)
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+            right: 14,
+            bottom: sheetH - 22,
+            child: _RoundTool(
+              tooltip: _open ? '목록 접기' : '목록 펴기',
+              size: 44,
+              onTap: () => setState(() => _open = !_open),
+              child: Icon(_open ? Icons.keyboard_double_arrow_down_rounded : Icons.keyboard_double_arrow_up_rounded,
+                  color: _Soft.brown, size: 26),
             ),
           ),
         ],
@@ -406,274 +523,419 @@ class _DecorScreenState extends State<DecorScreen> {
     );
   }
 
-  /// 판 안의 작은 제목.
-  Widget _label(String text, {String? note}) => Padding(
-        padding: const EdgeInsets.only(left: 2, bottom: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(text, style: gameText(size: 14, color: JdColors.woodText)),
-            if (note != null) ...[
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(note,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: JdColors.faint)),
-              ),
-            ],
-          ],
+  Widget _sheet() {
+    final tabs = [
+      ('벽지·바닥', TabGlyphs.surface(size: 16)),
+      ('벽 장식', TabGlyphs.wall(size: 16)),
+      ('가구', TabGlyphs.furniture(size: 16)),
+      ('캐릭터', TabGlyphs.buddy(size: 16)),
+    ];
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: Container(
+            decoration: const BoxDecoration(
+              color: _Soft.sheet,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+              border: Border(top: BorderSide(color: _Soft.rim, width: 3)),
+              boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 12, offset: Offset(0, -2))],
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 18, 14, 10),
+                  child: _SoftTabs(
+                      tabs: tabs,
+                      selected: _tab,
+                      onSelect: (i) => setState(() {
+                            _tab = i;
+                            _open = true;
+                          })),
+                ),
+                if (_open)
+                  Expanded(
+                    child: ListView(
+                      key: ValueKey('decorTab$_tab'),
+                      padding: EdgeInsets.fromLTRB(14, 4, 14, 20 + MediaQuery.paddingOf(context).bottom),
+                      children: switch (_tab) {
+                        0 => _surfaceTab(),
+                        1 => _thingTab(true),
+                        2 => _thingTab(false),
+                        _ => _buddyTab(),
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
+      ],
+    );
+  }
+
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+        child: Text(text, style: gameText(size: 13, color: _Soft.brown)),
       );
 
   List<Widget> _surfaceTab() {
     final layout = _decor.layoutOf(widget.roomId);
     final art = kRoomArt[widget.roomId]!;
     final dark = widget.night || _stage < art.litFrom;
-    Widget card(SurfaceItem item, String current) {
+    Widget slot(SurfaceItem item, String current) {
       final owned = _decor.hasSurface(item);
       final using = item.key == current;
       final pics = art.surfaces[item.key];
-      return _ItemCard(
+      return DecorSlot(
         key: ValueKey('surface-${item.key}'),
+        name: item.name,
+        bleed: true,
         picture: pics == null
             ? null
             : Image.asset(dark ? pics.$2 : pics.$1,
                 filterQuality: FilterQuality.none,
                 fit: BoxFit.cover,
                 alignment: item.kind == SurfaceKind.wall ? const Alignment(0, -0.55) : const Alignment(0, 0.8)),
-        pictureBleed: true,
-        name: item.name,
         price: owned ? null : item.price,
-        note: owned ? (using ? '지금 쓰는 중' : '가지고 있어요') : null,
-        action: using ? '쓰는 중' : (owned ? (item.kind == SurfaceKind.wall ? '바르기' : '깔기') : '사기'),
-        green: !owned,
-        onPressed: using || (!owned && _coins < item.price) ? null : () => _surface(item),
+        count: owned ? (using ? 1 : 0, 1) : null,
+        selected: using,
+        onTap: using || (!owned && _coins < item.price) ? null : () => _surface(item),
       );
     }
 
     return [
-      _label('벽지', note: '방 벽 전체에 발라요'),
-      _grid([for (final w in kWallpapers) card(w, layout.wallKey)]),
-      const SizedBox(height: 18),
-      _label('바닥', note: '가구 밑 바닥까지 바뀌어요'),
-      _grid([for (final f in kFloors) card(f, layout.floorKey)]),
+      _label('벽지'),
+      _grid([for (final w in kWallpapers) slot(w, layout.wallKey)]),
+      const SizedBox(height: 8),
+      _label('바닥'),
+      _grid([for (final f in kFloors) slot(f, layout.floorKey)]),
       ..._footer(),
     ];
   }
 
-  List<Widget> _thingTab(List<PlacedThing> stored, DecorSpot spot) {
+  /// 벽 장식(wall) 또는 가구·바닥 소품. 가진 것 먼저, 그다음 상점.
+  List<Widget> _thingTab(bool wall) {
+    final placed = [
+      for (final t in _things)
+        if (t.wall == wall) t
+    ];
+    final stored = [
+      if (!wall)
+        for (final f in storedFurniture(widget.roomId, _stage, _decor))
+          thingsIn(widget.roomId, _stage, _decor.moveFurniture(widget.roomId, f.id, f.x, f.y))
+              .firstWhere((t) => t.key == furnitureKey(f.id)),
+      for (final id in _decor.owned)
+        if (decorById(id) != null && _decor.roomOf(id) != widget.roomId) decorThing(id, 0, 0),
+    ].whereType<PlacedThing>().where((t) => t.wall == wall).toList();
+    final spot = wall ? DecorSpot.wall : DecorSpot.floor;
     final shop = [
       for (final item in kDecorItems)
         if (item.spot == spot && !_decor.owned.contains(item.id)) item
     ];
+    Widget thing(PlacedThing t, bool inRoom) => DecorSlot(
+          key: ValueKey(inRoom ? 'placed-${t.key}' : 'stored-${t.key}'),
+          name: t.name,
+          picture: Image.asset(t.day.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+          count: (inRoom ? 1 : 0, 1),
+          selected: t.key == _selected,
+          onTap: () => _tapThing(t, placed: inRoom),
+        );
     return [
-      if (stored.isNotEmpty) ...[
-        _label('보관함', note: '${stored.length}개 · 놓으면 빈 자리에 놓여요'),
-        _grid([
-          for (final t in stored)
-            _ItemCard(
-              key: ValueKey('stored-${t.key}'),
-              picture: Image.asset(t.day.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
-              name: t.name,
-              note: t.isDecor && !_canPlace ? '방이 조금 더 회복되면 놓을 수 있어요' : '보관함에 있어요',
-              action: '놓기',
-              onPressed: t.isDecor && !_canPlace ? null : () => _takeOut(t),
-            ),
-        ]),
-        const SizedBox(height: 18),
-      ],
-      _label('상점', note: '하나씩만 살 수 있어요'),
-      if (shop.isEmpty)
-        const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text('여기 있는 건 다 모았어요!', style: TextStyle(color: JdColors.subtle)),
-        )
-      else
-        _grid([
-          for (final item in shop)
-            _ItemCard(
-              key: ValueKey('shop-${item.id}'),
-              picture: kDecorArt[item.id] == null
-                  ? null
-                  : Image.asset(kDecorArt[item.id]!.$4.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
-              name: item.name,
-              price: item.price,
-              action: '사기',
-              green: true,
-              onPressed: _coins >= item.price ? () => _buy(item) : null,
-            ),
-        ]),
-      if (spot == DecorSpot.floor && stored.isEmpty)
-        const Padding(
-          padding: EdgeInsets.only(top: 14),
-          child: Text('방에 있는 가구는 방에서 눌러 고른 뒤 보관함에 넣을 수 있어요.',
-              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: JdColors.faint)),
-        ),
+      _grid([
+        for (final t in placed) thing(t, true),
+        for (final t in stored) thing(t, false),
+        for (final item in shop)
+          DecorSlot(
+            key: ValueKey('shop-${item.id}'),
+            name: item.name,
+            picture: kDecorArt[item.id] == null
+                ? null
+                : Image.asset(kDecorArt[item.id]!.$4.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+            price: item.price,
+            onTap: _coins >= item.price ? () => _buy(item) : null,
+          ),
+      ]),
       ..._footer(),
     ];
   }
 
   List<Widget> _buddyTab() => [
-        _label('캐릭터', note: '방에서 끌어서 자리를 옮길 수 있어요'),
         _grid([
           for (final b in kBuddies)
-            _ItemCard(
+            DecorSlot(
               key: ValueKey('buddy-${b.id}'),
-              picture: Image.asset(b.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
               name: b.name,
-              note: b.id == _buddy.id ? '지금 함께 있어요' : null,
-              action: b.id == _buddy.id ? '함께하는 중' : '함께하기',
-              onPressed: b.id == _buddy.id ? null : () => _pickBuddy(b),
+              picture: Image.asset(b.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+              label: b.id == _buddy.id ? '함께' : '고르기',
+              selected: b.id == _buddy.id,
+              onTap: b.id == _buddy.id ? () => setState(() => _selected = _buddyKey) : () => _pickBuddy(b),
             ),
         ]),
+        const SizedBox(height: 12),
+        const Text('캐릭터도 방에서 끌어서 자리를 옮길 수 있어요.',
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: _Soft.brownSoft)),
       ];
 
   List<Widget> _footer() => [
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         Text(
-          shopIsFree ? '지금은 시험 기간이라 상점이 모두 0코인이에요.' : '코인은 미션을 하면 10개씩 생겨요. 방이 자라는 건 코인과 상관없어요.',
+          shopIsFree ? '지금은 시험 기간이라 상점이 모두 0코인이에요.' : '코인은 미션을 하면 10개씩 생겨요.',
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 12, color: JdColors.faint),
+          style: const TextStyle(fontSize: 12, color: _Soft.brownSoft),
         ),
       ];
 
-  /// 카드를 두 줄(넓으면 세 줄)로 늘어놓는다.
-  Widget _grid(List<Widget> cards) => LayoutBuilder(builder: (context, c) {
-        const gap = 10.0;
-        final cols = c.maxWidth >= 500 ? 3 : 2;
+  /// 칸을 한 줄에 4개(넓으면 5개) 늘어놓는다.
+  Widget _grid(List<Widget> slots) => LayoutBuilder(builder: (context, c) {
+        const gap = 8.0;
+        final cols = c.maxWidth >= 440 ? 5 : 4;
         final w = (c.maxWidth - gap * (cols - 1)) / cols;
         return Wrap(
           spacing: gap,
           runSpacing: gap,
-          children: [for (final card in cards) SizedBox(width: w, child: card)],
+          children: [for (final s in slots) SizedBox(width: w, child: s)],
         );
       });
+}
 
-  /// 방 아래 작업대: 고른 것 이름과 보관함에 넣기. 아무것도 안 골랐으면 쓰는 법.
-  Widget _selectionBar() {
-    final key = _selected;
-    final t = _thing(key);
-    final picked = key != null && (t != null || key == _buddyKey);
+/// 꾸미기 화면의 부드러운 크림·갈색.
+abstract final class _Soft {
+  static const sheet = Color(0xFFFBF1E2);
+  static const tile = Color(0xFFFFF9F1);
+  static const rim = Color(0xFFC7AE9C);
+  static const rimDeep = Color(0xFFA58B7C);
+  static const brown = Color(0xFF6E5547);
+  static const brownSoft = Color(0xFF8C7466);
+  static const orange = Color(0xFFF2994A);
+  static const orangeLight = Color(0xFFF8C77E);
+}
+
+/// 동그란 도구 버튼.
+class _RoundTool extends StatelessWidget {
+  const _RoundTool({required this.tooltip, required this.onTap, required this.child, this.size = 52});
+
+  final String tooltip;
+  final VoidCallback? onTap;
+  final Widget child;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: Opacity(
+        opacity: on ? 1 : 0.45,
+        child: Material(
+          color: _Soft.tile,
+          shape: const CircleBorder(side: BorderSide(color: _Soft.rim, width: 3)),
+          elevation: 2,
+          shadowColor: const Color(0x55000000),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(width: size, height: size, child: Center(child: child)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 방 위에 뜨는 크림색 알약.
+class _SoftChip extends StatelessWidget {
+  const _SoftChip({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: _Soft.tile.withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: _Soft.rim, width: 2),
+        ),
+        child: child,
+      );
+}
+
+/// 둥근 탭 줄. 고른 탭은 주황 알약에 이름까지, 나머지는 아이콘만.
+class _SoftTabs extends StatelessWidget {
+  const _SoftTabs({required this.tabs, required this.selected, required this.onSelect});
+
+  final List<(String, Widget)> tabs;
+  final int selected;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      height: 46,
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.fromLTRB(12, 0, 8, 0),
-      color: Colors.black.withValues(alpha: 0.22),
+      height: 50,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6E7D2),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: _Soft.rim, width: 2),
+      ),
       child: Row(
         children: [
-          if (!picked)
-            const Expanded(
-              child: Text('가구·소품·캐릭터를 손가락으로 집어서 끌어다 놓아 보세요.',
-                  maxLines: 2, style: TextStyle(fontSize: 12, height: 1.3, color: Color(0xFFD5DEE8))),
-            )
-          else ...[
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: Image.asset(t?.day.asset ?? _buddy.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
-              ),
-            ),
+          for (var i = 0; i < tabs.length; i++)
             Expanded(
-              child: Text(t?.name ?? _buddy.name,
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: gameText(size: 14, color: Colors.white)),
-            ),
-            if (t != null)
-              GameButton(
-                small: true,
-                label: '보관함에',
-                color: JdColors.cream,
-                lip: JdColors.creamLip,
-                onTap: () => _store(t),
+              flex: i == selected ? 5 : 3,
+              child: Tooltip(
+                message: tabs[i].$1,
+                child: Semantics(
+                  button: true,
+                  selected: i == selected,
+                  label: tabs[i].$1,
+                  child: GestureDetector(
+                    key: ValueKey('tab-${tabs[i].$1}'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onSelect(i),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      decoration: i == selected
+                          ? BoxDecoration(
+                              color: _Soft.orange,
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(color: _Soft.orangeLight, width: 3),
+                            )
+                          : null,
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          tabs[i].$2,
+                          if (i == selected) ...[
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(tabs[i].$1,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.fade,
+                                  softWrap: false,
+                                  style: gameText(size: 13, color: Colors.white)),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
-          ],
+            ),
         ],
       ),
     );
   }
 }
 
-/// 상점·보관함·캐릭터 카드: 위에 그림 칸, 아래에 이름·값·버튼.
-class _ItemCard extends StatelessWidget {
-  const _ItemCard({
+/// 꾸미기 칸 하나: 위에 그림, 아래 띠에 값(코인) 또는 놓은 수/가진 수.
+class DecorSlot extends StatelessWidget {
+  const DecorSlot({
     super.key,
-    required this.picture,
     required this.name,
-    required this.action,
-    required this.onPressed,
+    required this.picture,
+    required this.onTap,
     this.price,
-    this.note,
-    this.green = false,
-    this.pictureBleed = false,
+    this.count,
+    this.label,
+    this.selected = false,
+    this.bleed = false,
   });
 
-  final Widget? picture;
   final String name;
-  final String action;
-  final VoidCallback? onPressed;
+  final Widget? picture;
+  final VoidCallback? onTap;
 
-  /// 값. 없으면 [note]를 보여 준다.
+  /// 아직 안 산 것의 값.
   final int? price;
-  final String? note;
 
-  /// 사기 버튼처럼 초록.
-  final bool green;
+  /// (방에 놓은 수, 가진 수)
+  final (int, int)? count;
 
-  /// 벽지·바닥 그림처럼 칸을 꽉 채울지.
-  final bool pictureBleed;
+  /// 값·개수 대신 띠에 쓸 말.
+  final String? label;
+
+  /// 주황 테두리로 표시 (방에서 고른 것, 쓰는 벽지).
+  final bool selected;
+
+  /// 그림을 칸 가득 채울지 (벽지·바닥).
+  final bool bleed;
 
   @override
   Widget build(BuildContext context) {
-    final (face, lip, text) = green ? GameButton.green : GameButton.wood;
-    return GamePanel(
-      color: JdColors.paper,
-      lip: JdColors.seamDark,
-      depth: 3,
-      padding: const EdgeInsets.all(7),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final on = onTap != null;
+    final Widget footer;
+    if (price != null) {
+      footer = Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            height: 72,
-            padding: pictureBleed ? EdgeInsets.zero : const EdgeInsets.all(9),
-            clipBehavior: Clip.antiAlias,
-            decoration: const ShapeDecoration(
-              color: JdColors.woodLight,
-              shape: PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.wood, width: 1.5)),
-            ),
-            child: picture ?? const SizedBox(),
-          ),
-          const SizedBox(height: 7),
-          Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: gameText(size: 13)),
-          const SizedBox(height: 3),
-          SizedBox(
-            height: 16,
-            child: price != null
-                ? Row(
-                    children: [
-                      const PixelCoin(size: 12),
-                      const SizedBox(width: 4),
-                      Text('$price', style: gameText(size: 12, color: JdColors.woodText)),
-                    ],
-                  )
-                : Text(note ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11, color: JdColors.faint)),
-          ),
-          const SizedBox(height: 6),
-          GameButton(
-            label: action,
-            expand: true,
-            small: true,
-            color: face,
-            lip: lip,
-            textColor: text,
-            onTap: onPressed,
-          ),
+          const PixelCoin(size: 13),
+          const SizedBox(width: 4),
+          Text('$price', style: gameText(size: 13, color: Colors.white)),
         ],
+      );
+    } else if (count != null) {
+      footer = Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.shopping_bag_rounded, size: 14, color: Color(0xFFEBDCCD)),
+          const SizedBox(width: 4),
+          Text('${count!.$1}/${count!.$2}', style: gameText(size: 13, color: Colors.white)),
+        ],
+      );
+    } else {
+      footer = Text(label ?? '', style: gameText(size: 12, color: Colors.white));
+    }
+    return Tooltip(
+      message: name,
+      child: Semantics(
+        button: true,
+        enabled: on,
+        label: name,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: selected ? _Soft.orangeLight : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Opacity(
+              opacity: on || selected ? 1 : 0.55,
+              child: Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: _Soft.rimDeep,
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: selected ? _Soft.orange : _Soft.rim, width: 2.5),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 1,
+                      child: Container(
+                        margin: const EdgeInsets.fromLTRB(2, 2, 2, 0),
+                        padding: bleed ? EdgeInsets.zero : const EdgeInsets.all(10),
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          color: _Soft.tile,
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: picture ?? const SizedBox(),
+                      ),
+                    ),
+                    SizedBox(height: 24, child: Center(child: footer)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

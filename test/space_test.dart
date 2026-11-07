@@ -13,6 +13,7 @@ import 'package:jeoduit/models/return_days.dart';
 import 'package:jeoduit/models/space.dart';
 import 'package:jeoduit/models/space_art.dart';
 import 'package:jeoduit/services/record_repository.dart';
+import 'package:jeoduit/screens/decor_screen.dart';
 import 'package:jeoduit/services/space_store.dart';
 import 'package:jeoduit/utils/photo.dart';
 import 'package:jeoduit/widgets/space_view.dart';
@@ -296,10 +297,12 @@ void main() {
     await tester.tap(find.text('꾸미기'));
     await tester.pumpAndSettle();
     expect(find.text('코인 30'), findsOneWidget);
-    await tester.tap(find.text('벽 장식'));
+    await tester.tap(find.byKey(const ValueKey('tab-벽 장식')));
     await tester.pumpAndSettle();
-    final buyClock = find.descendant(of: find.byKey(const ValueKey('shop-clock')), matching: find.text('사기'));
-    await tester.tap(buyClock);
+    await tester.tap(find.byKey(const ValueKey('shop-clock')));
+    await tester.pumpAndSettle();
+    // 값이 있으면 한 번 묻는다.
+    await tester.tap(find.text('사기'));
     await tester.pumpAndSettle();
     expect(find.text('코인 10'), findsOneWidget);
     // 산 소품은 바로 빈 자리에 놓이고 골라진 상태가 된다.
@@ -316,6 +319,13 @@ void main() {
     await tester.dragFrom(grab, Offset(0, -10 * s));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'], (placed.$1, placed.$2 + 5));
+    // 되돌리기 하면 원래 자리로, 다시 끌어 올린다.
+    await tester.tap(find.byTooltip('되돌리기'));
+    await tester.pumpAndSettle();
+    expect((await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'], placed);
+    await tester.dragFrom(grab, Offset(0, -10 * s));
+    await tester.pumpAndSettle();
+    expect((await SpaceStore().load()).decor.layoutOf('bedroom').decor['clock'], (placed.$1, placed.$2 + 5));
 
     // 캐릭터도 끌어서 옮긴다 (바닥에서 오른쪽 아래로 = x+).
     final (bx, by) = buddySpot('bedroom', thingsIn('bedroom', 3, (await SpaceStore().load()).decor));
@@ -329,21 +339,18 @@ void main() {
     await tester.tapAt(origin + Offset((l2 + w2 / 2) * s, (top2 + h2 / 2) * s));
     await tester.pumpAndSettle();
     expect(find.text('벽시계'), findsOneWidget);
-    await tester.tap(find.text('보관함에'));
+    await tester.tap(find.byTooltip('보관함에 넣기'));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.roomOf('clock'), isNull);
-    await tester.tap(find.descendant(of: find.byKey(const ValueKey('stored-d:clock')), matching: find.text('놓기')));
+    await tester.tap(find.byKey(const ValueKey('stored-d:clock')));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).decor.roomOf('clock'), 'bedroom');
     // 40코인짜리 무드등은 못 산다 (가구 탭).
-    await tester.tap(find.text('가구'));
+    await tester.tap(find.byKey(const ValueKey('tab-가구')));
     await tester.pumpAndSettle();
-    final lampButton = find.ancestor(
-        of: find.descendant(of: find.byKey(const ValueKey('shop-moodlamp')), matching: find.text('사기')),
-        matching: find.byType(GameButton));
-    expect(tester.widget<GameButton>(lampButton).onTap, isNull);
+    expect(tester.widget<DecorSlot>(find.byKey(const ValueKey('shop-moodlamp'))).onTap, isNull);
 
-    await tester.pageBack();
+    await tester.tap(find.byTooltip('뒤로'));
     await tester.pumpAndSettle();
     expect(tester.widget<Text>(find.byKey(const Key('coins'))).data, '10');
     expect((await SpaceStore().load()).decor.roomOf('clock'), 'bedroom');
@@ -555,8 +562,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('꾸미기'));
     await tester.pumpAndSettle();
-    expect(find.text('벽지·바닥'), findsOneWidget);
-    final buyMint = find.descendant(of: find.byKey(const ValueKey('surface-wall_mint')), matching: find.text('사기'));
+    await tester.tap(find.byKey(const ValueKey('tab-벽지·바닥')));
+    await tester.pumpAndSettle();
+    expect(find.text('벽지·바닥'), findsOneWidget, reason: '고른 탭은 이름이 보인다');
+    final buyMint = find.byKey(const ValueKey('surface-wall_mint'));
     await tester.ensureVisible(buyMint);
     await tester.tap(buyMint);
     await tester.pumpAndSettle();
@@ -568,9 +577,9 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.text('캐릭터'));
+    await tester.tap(find.byKey(const ValueKey('tab-캐릭터')));
     await tester.pumpAndSettle();
-    await tester.tap(find.descendant(of: find.byKey(const ValueKey('buddy-hamster')), matching: find.text('함께하기')));
+    await tester.tap(find.byKey(const ValueKey('buddy-hamster')));
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).buddy, 'hamster');
   });
