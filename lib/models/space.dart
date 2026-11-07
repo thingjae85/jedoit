@@ -19,8 +19,8 @@ class SpaceRoomDef {
 const List<SpaceRoomDef> kSpaceRooms = [
   SpaceRoomDef(id: 'bedroom', name: '방1', lines: [
     '',
-    '창문으로 햇빛이 들어와요',
-    '상자를 풀고 침대를 놓았어요',
+    '상자를 치웠어요. 이제 방을 꾸밀 수 있어요',
+    '침대와 협탁이 들어왔어요',
     '침대 옆에 러그를 깔았어요',
     '책상과 의자가 생겼어요',
     '큰 화분이 들어왔어요',

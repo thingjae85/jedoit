@@ -45,7 +45,7 @@ fairy_hi = lifted(fairy, 9)
 def bedroom_shell(stage, night):
     day = stage >= 1 and not night
     s = Scene(); rooms2.base(s); window(s, 13, 9, 24, 13, day)
-    if stage <= 1:  # 처음엔 상자가 쌓인 방. 이때는 옮길 가구가 없다.
+    if stage <= 0:  # 처음엔 상자가 쌓인 방. 첫 미션에 상자를 치우고 꾸미기가 열린다.
         crate(s, 5, 6); crate(s, 24, 20); books_floor(s, 13, 7)
     if stage >= 7: cabinet_hi(s, 0, 4); frames_hi(s, 30)
     if stage >= 8: fairy_hi(s, 3, 36)

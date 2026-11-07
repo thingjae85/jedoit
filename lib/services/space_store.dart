@@ -81,6 +81,7 @@ class SpaceStore {
   static const rerollKey = 'jeoduit.discovery.rerolled';
   static const lettersKey = 'jeoduit.letters';
   static const decorKey = 'jeoduit.decor';
+  static const decorGuideKey = 'jeoduit.decor.guide';
 
   /// 저장값이 깨져 있으면 그 항목만 기본값으로 읽는다.
   Future<SpacePrefs> load() async {
@@ -124,6 +125,13 @@ class SpaceStore {
   Future<void> saveDecor(DecorData decor) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(decorKey, jsonEncode(decor.toJson()));
+  }
+
+  /// 꾸미기 가이드를 한 번 봤는지.
+  Future<bool> decorGuideSeen() async => (await SharedPreferences.getInstance()).getBool(decorGuideKey) ?? false;
+
+  Future<void> setDecorGuideSeen() async {
+    await (await SharedPreferences.getInstance()).setBool(decorGuideKey, true);
   }
 
   Future<void> setPinnedRoom(String? id) async {

@@ -79,8 +79,9 @@ DecorItem? decorById(String id) {
   return null;
 }
 
-/// 방이 이만큼 회복돼야 꾸밀 수 있다. 침실은 처음에 상자가 쌓여 있어서 2단계부터.
-const Map<String, int> kDecorMinStage = {'bedroom': 2, 'study': 0};
+/// 방이 이만큼 회복돼야 꾸밀 수 있다. 침실은 처음에 상자가 쌓여 있어서 첫 미션(1단계)부터.
+/// 그 전에도 상점에서 미리 사 둘 수는 있다.
+const Map<String, int> kDecorMinStage = {'bedroom': 1, 'study': 0};
 
 bool canDecorate(String roomId, int stage) => stage >= (kDecorMinStage[roomId] ?? 0);
 

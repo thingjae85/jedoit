@@ -150,6 +150,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('했어요'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('나중에')); // 첫 미션이면 꾸미기가 열렸다는 창
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('30분 안에 로그인하면'), findsOneWidget);
     expect(drafts.pendingDrafts(), hasLength(1));
