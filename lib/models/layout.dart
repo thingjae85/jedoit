@@ -71,7 +71,8 @@ String furnitureKey(String id) => 'f:$id';
 String decorKey(String id) => 'd:$id';
 
 /// 지금 방에 놓인 것들 (보관함에 넣은 가구와 아직 안 생긴 가구는 빼고).
-List<PlacedThing> thingsIn(String roomId, int stage, DecorData data) {
+/// [photo]면 미션 사진 액자도 건다.
+List<PlacedThing> thingsIn(String roomId, int stage, DecorData data, {bool photo = false}) {
   final art = kRoomArt[roomId];
   if (art == null) return const [];
   final layout = data.layoutOf(roomId);
@@ -91,8 +92,39 @@ List<PlacedThing> thingsIn(String roomId, int stage, DecorData data) {
       if (t != null) out.add(t);
     }
   }
+  if (photo && !layout.stored.contains(photoFrameId)) {
+    final frame = photoThing(kFrameY, kFrameZ);
+    final at = layout.furniture[photoFrameId] ?? freeSpot(roomId, stage, out, frame, preferA: kFrameY, preferB: kFrameZ);
+    if (at != null) out.add(frame.at(at.$1, at.$2));
+  }
   return out;
 }
+
+/// 미션 사진을 거는 액자. 가구처럼 방마다 왼쪽 벽 아무 데나 옮기거나 보관함에 넣는다.
+const photoFrameId = 'photo';
+
+/// 액자 크기: 테두리 1칸 + 사진 8×8칸.
+const int kFrameCells = 10;
+
+/// 처음 거는 자리 (왼쪽 벽 y, z).
+const int kFrameY = 3;
+const int kFrameZ = 20;
+
+/// 액자 그림이 차지하는 사각형을 [kFrameY], [kFrameZ] 자리 기준으로 (그림은 앱에서 칸마다 그린다).
+final Sprite kFrameSprite = Sprite(
+  '',
+  (kRoomOriginX - 2 * (kFrameY + kFrameCells) - 2).round(),
+  (kRoomOriginY + kFrameY - 2 * (kFrameZ + kFrameCells) + 1).round(),
+  2 * kFrameCells,
+  3 * kFrameCells,
+);
+
+/// 액자를 왼쪽 벽 (y, z) 칸에 걸었을 때.
+PlacedThing photoThing(int a, int b) => PlacedThing(
+      key: furnitureKey(photoFrameId), id: photoFrameId, name: '사진 액자', isDecor: false, wall: true, flat: false,
+      a: a, b: b, w: kFrameCells, d: kFrameCells, day: kFrameSprite, night: kFrameSprite,
+      refA: kFrameY, refB: kFrameZ,
+    );
 
 /// 산 소품 하나를 (a, b)에 놓았을 때.
 PlacedThing? decorThing(String itemId, int a, int b) {

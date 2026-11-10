@@ -433,6 +433,26 @@ class _HomeScreenState extends State<HomeScreen> {
     await _openDecor(SpaceState.of(count), 'bedroom', isNightTime(DateTime.now()));
   }
 
+  /// 잠긴 꾸미기를 눌렀을 때: 언제 열리는지 알려 주고, 상점은 미리 구경할 수 있게.
+  Future<void> _showDecorLocked(SpaceState state, String roomId, bool night) async {
+    final shop = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.lock_rounded, color: JdColors.wood, size: 32),
+        title: const Text('아직 잠겨 있어요', textAlign: TextAlign.center),
+        content: const Text(
+          '오늘의 미션을 하나 해 보세요.\n상자가 치워지면 꾸미기가 열려요.\n\n상점은 지금도 구경하고 미리 사 둘 수 있어요.',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('상점 구경하기')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('알겠어요')),
+        ],
+      ),
+    );
+    if (shop == true && mounted) await _openDecor(state, roomId, night);
+  }
+
   Future<void> _openDecor(SpaceState state, String roomId, bool night) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -721,13 +741,16 @@ class _HomeScreenState extends State<HomeScreen> {
             state: state,
             shownRoom: shown,
             pinned: _prefs.pinnedRoom != null && state.isOpen(_prefs.pinnedRoom!),
-            hiveView: _prefs.hiveView,
+            // 방이 하나뿐일 땐 벌집 보기가 없다.
+            hiveView: _prefs.hiveView && state.stages.length > 1,
             buddy: buddy,
             photo: _framePixels,
             line: _reaction ?? buddyIdleLine(state, shown, doneToday: todayRecords.isNotEmpty, night: night),
             night: night,
             decor: _prefs.decor,
-            onDecorate: () => _openDecor(state, shown, night),
+            onDecorate: canDecorate(shown, state.stageOf(shown))
+                ? () => _openDecor(state, shown, night)
+                : () => _showDecorLocked(state, shown, night),
             onRename: () => _renameRoom(shown),
             change: _change,
             letter: letters.isEmpty ? null : letters.first,
@@ -984,6 +1007,10 @@ class _RoomCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 12, 10, 0),
             child: Row(
               children: [
+                // 이름 쪽이 남는 자리를 다 가져가서 꾸미기·보기 버튼이 오른쪽 끝에 붙는다.
+                Expanded(
+                  child: Row(
+                    children: [
                 Flexible(
                   child: hiveView
                       ? Text('내 공간', style: gameText(size: 14, color: Colors.white))
@@ -1002,17 +1029,32 @@ class _RoomCard extends StatelessWidget {
                     ),
                   ),
                 ],
-                const Spacer(),
-                if (!hiveView) ...[
-                  GameButton(
-                    small: true,
-                    label: '꾸미기',
-                    icon: TabGlyphs.furniture(size: 12),
-                    onTap: onDecorate,
+                    ],
                   ),
+                ),
+                const SizedBox(width: 8),
+                if (!hiveView)
+                  canDecorate(shownRoom, state.stageOf(shownRoom))
+                      ? GameButton(
+                          small: true,
+                          label: '꾸미기',
+                          icon: TabGlyphs.furniture(size: 12),
+                          onTap: onDecorate,
+                        )
+                      // 아직 잠긴 꾸미기: 흐린 색에 자물쇠. 누르면 언제 열리는지 알려 준다.
+                      : GameButton(
+                          key: const Key('decorLocked'),
+                          small: true,
+                          label: '꾸미기',
+                          icon: const Icon(Icons.lock_rounded, size: 13, color: Color(0xFF5E564F)),
+                          color: const Color(0xFFADA59B),
+                          lip: const Color(0xFF6F675F),
+                          textColor: const Color(0xFF5E564F),
+                          onTap: onDecorate,
+                        ),
+                if (state.stages.length > 1) ...[
                   const SizedBox(width: 6),
-                ],
-                _CardButton(
+                  _CardButton(
                   padding: const EdgeInsets.all(3),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1033,6 +1075,7 @@ class _RoomCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                ],
               ],
             ),
           ),

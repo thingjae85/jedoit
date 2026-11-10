@@ -64,7 +64,7 @@ class RoomPicture extends StatelessWidget {
   Widget build(BuildContext context) {
     final art = kRoomArt[roomId]!;
     final st = _stage;
-    final list = things ?? thingsIn(roomId, st, decor);
+    final list = things ?? thingsIn(roomId, st, decor, photo: photo != null);
     final walls = [for (final t in list) if (t.wall) t];
     final flats = [for (final t in list) if (!t.wall && t.flat) t]..sort((p, q) => (p.a + p.b).compareTo(q.a + q.b));
     final blockers = [for (final t in list) if (!t.wall && !t.flat) t];
@@ -92,14 +92,17 @@ class RoomPicture extends StatelessWidget {
         Widget sprite(PlacedThing t) {
           final (l, top, w, h) = t.rect(atNight: night);
           final up = lifted && t.key == selectedKey ? lift : 0;
+          final pixels = photo;
           return Positioned(
             key: ValueKey(t.key),
             left: l * s,
             top: (top - up) * s,
             width: w * s,
             height: h * s,
-            child: Image.asset(night ? t.night.asset : t.day.asset,
-                filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),
+            child: t.id == photoFrameId
+                ? (pixels == null ? const SizedBox() : CustomPaint(painter: _FramePainter(pixels, s)))
+                : Image.asset(night ? t.night.asset : t.day.asset,
+                    filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),
           );
         }
 
@@ -116,10 +119,6 @@ class RoomPicture extends StatelessWidget {
                   filterQuality: FilterQuality.none, fit: BoxFit.fill, gaplessPlayback: true),
             ),
             for (final t in walls) sprite(t),
-            if (photo != null)
-              Positioned.fill(
-                child: CustomPaint(painter: _FramePainter(photo!, art.frameX, art.frameZ, s)),
-              ),
             for (final t in flats) sprite(t),
             if (selected != null)
               Positioned.fill(
@@ -194,42 +193,77 @@ class _FootprintPainter extends CustomPainter {
       old.scale != scale || old.valid != valid;
 }
 
-/// 오른쪽 뒷벽에 거는 10×10칸 액자(테두리 1칸 + 사진 8×8). 벽 기울기에 맞춰 칸을 비스듬히 그린다.
+/// 왼쪽 벽에 거는 10×10칸 액자(테두리 1칸 + 사진 8×8). 벽 기울기에 맞춰 칸을 비스듬히 그린다.
+/// 그림 칸([kFrameSprite]) 안쪽 좌표로 그린다.
 class _FramePainter extends CustomPainter {
-  _FramePainter(this.pixels, this.x0, this.z0, this.scale);
+  _FramePainter(this.pixels, this.scale);
 
   final List<int> pixels;
-  final int x0;
-  final int z0;
   final double scale;
 
   static const _edge = Color(0xFFF3E6CC);
 
+  Offset _wall(int y, int z) => Offset(
+        (kRoomOriginX - 2 * y - 2 - kFrameSprite.left) * scale,
+        (kRoomOriginY + y - 2 * z + 1 - kFrameSprite.top) * scale,
+      );
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..isAntiAlias = false;
-    for (var i = 0; i < 10; i++) {
-      for (var k = 0; k < 10; k++) {
-        final edge = i == 0 || i == 9 || k == 0 || k == 9;
-        paint.color = edge ? _edge : Color(pixels[(8 - k) * 8 + (i - 1)]);
-        final x = x0 + i;
-        final z = z0 + k;
-        final px = kRoomOriginX + 2 * x;
-        final py = kRoomOriginY + (x - 1) - 2 * z + 2;
-        final path = Path()
-          ..moveTo(px * scale, py * scale)
-          ..lineTo((px + 2) * scale, (py + 1) * scale)
-          ..lineTo((px + 2) * scale, (py + 3) * scale)
-          ..lineTo(px * scale, (py + 2) * scale)
-          ..close();
+    for (var i = 0; i < kFrameCells; i++) {
+      for (var k = 0; k < kFrameCells; k++) {
+        final edge = i == 0 || i == kFrameCells - 1 || k == 0 || k == kFrameCells - 1;
+        // 왼쪽 벽은 y가 늘면 화면 왼쪽으로 간다.
+        paint.color = edge ? _edge : Color(pixels[(8 - k) * 8 + (8 - i)]);
+        final y = kFrameY + i;
+        final z = kFrameZ + k;
+        final path = Path()..addPolygon([_wall(y, z), _wall(y + 1, z), _wall(y + 1, z + 1), _wall(y, z + 1)], true);
         canvas.drawPath(path, paint);
       }
     }
   }
 
   @override
-  bool shouldRepaint(_FramePainter old) =>
-      old.pixels != pixels || old.scale != scale || old.x0 != x0 || old.z0 != z0;
+  bool shouldRepaint(_FramePainter old) => old.pixels != pixels || old.scale != scale;
+}
+
+/// 목록 칸에 보여 줄 납작한 사진 액자.
+class PhotoFrameIcon extends StatelessWidget {
+  const PhotoFrameIcon(this.pixels, {super.key});
+  final List<int> pixels;
+
+  @override
+  Widget build(BuildContext context) =>
+      AspectRatio(aspectRatio: 1, child: CustomPaint(painter: _FlatFramePainter(pixels)));
+}
+
+class _FlatFramePainter extends CustomPainter {
+  _FlatFramePainter(this.pixels);
+  final List<int> pixels;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.width / kFrameCells;
+    final paint = Paint()..isAntiAlias = false;
+    for (var i = 0; i < kFrameCells; i++) {
+      for (var k = 0; k < kFrameCells; k++) {
+        final edge = i == 0 || i == kFrameCells - 1 || k == 0 || k == kFrameCells - 1;
+        paint.color = edge ? _FramePainter._edge : Color(pixels[(k - 1) * 8 + (i - 1)]);
+        canvas.drawRect(Rect.fromLTWH(i * c, k * c, c + 0.5, c + 0.5), paint);
+      }
+    }
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..color = const Color(0xFFB59873)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_FlatFramePainter old) => old.pixels != pixels;
 }
 
 /// 벌집 보기: 방들이 육각형으로 붙어 있다. 아직 안 열린 칸은 닫힌 문.
