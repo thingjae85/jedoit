@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/buddy.dart';
 import '../models/decor.dart';
 import '../models/mission.dart';
 
@@ -54,7 +55,7 @@ class SpacePrefs {
   /// true면 벌집 보기.
   final bool hiveView;
 
-  /// 'bear' 또는 'hamster'
+  /// [kBuddies]의 id ('bear', 'hamster', 'shark')
   final String buddy;
 
   final List<Mission> customMissions;
@@ -114,7 +115,7 @@ class SpaceStore {
     return SpacePrefs(
       pinnedRoom: p.getString(pinnedKey),
       hiveView: p.getBool(hiveKey) ?? false,
-      buddy: buddy == 'hamster' ? 'hamster' : 'bear',
+      buddy: kBuddies.any((b) => b.id == buddy) ? buddy! : 'bear',
       customMissions: custom.take(maxCustomMissions).toList(),
       rerolledOn: p.getString(rerollKey),
       letters: letters,

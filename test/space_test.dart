@@ -624,6 +624,10 @@ void main() {
     await tester.pumpAndSettle();
     expect((await SpaceStore().load()).buddy, 'hamster');
     expect(tester.widget<DecorSlot>(find.byKey(const ValueKey('buddy-hamster'))).status, '선택됨');
+    // 운동화 신은 상어도 고를 수 있다.
+    await tester.tap(find.byKey(const ValueKey('buddy-shark')));
+    await tester.pumpAndSettle();
+    expect((await SpaceStore().load()).buddy, 'shark');
     await tester.tap(find.byKey(const ValueKey('mode-상점')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('tab-캐릭터')), findsNothing);

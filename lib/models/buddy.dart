@@ -1,7 +1,7 @@
 import 'mission.dart';
 import 'space.dart';
 
-/// 같이 사는 친구(곰인형·햄스터인형). 돌봐 달라고 하지 않고, 해낸 일에 혼잣말로 반응만 한다.
+/// 같이 사는 친구(곰인형·햄스터인형·운동화 신은 상어). 돌봐 달라고 하지 않고, 해낸 일에 혼잣말로 반응만 한다.
 class Buddy {
   const Buddy(this.id, this.name);
   final String id;
@@ -10,7 +10,7 @@ class Buddy {
   String get asset => 'assets/space/$id.png';
 }
 
-const kBuddies = [Buddy('bear', '곰돌이'), Buddy('hamster', '햄찌')];
+const kBuddies = [Buddy('bear', '곰돌이'), Buddy('hamster', '햄찌'), Buddy('shark', '샤키')];
 
 Buddy buddyById(String id) => kBuddies.firstWhere((b) => b.id == id, orElse: () => kBuddies.first);
 

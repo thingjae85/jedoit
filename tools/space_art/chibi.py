@@ -79,6 +79,35 @@ HAM_PAL={'O':'#585c64','c':'#aeb2b9','c_hi':'#c9cdd3','c_lo':'#8f939b','G':'#6f7
  'p':'#f4a5a5','n':'#d9707a','e':'#24202a','*':'#ffffff','r':'#4b4f6a','f':'#f2b5a0'}
 def bear_img(scale=1): return render(eyes(BEAR,5),BEAR_PAL,scale)
 def ham_img(scale=1): return render(eyes(HAM,5),HAM_PAL,scale)
+# 상어: 앞모습, 등지느러미, 이빨, 파란 운동화.
+SHARK=mirror([
+"..........O",
+".........OG",
+"........OGG",
+"........OGc",
+"...OOOOOccc",
+"..Occcccccc",
+".Occccccccc",
+"Occcccccccc",
+"Occcc..cccc",
+"Occcc..cccc",
+"Occcc..cccc",
+"Occcwwwwwww",
+"OcwwOOOOOOO",
+".OwwOktktkt",
+"..OOwOkkkkk",
+"...OOOOOOOO",
+".OOccOwwwww",
+"OcccOOwwwww",
+".OOO.Owwwww",
+".....Owwwww",
+"...OBWBBOOO",
+"..OBBBBBBO.",
+"..OssssssO.",
+])
+SHARK_PAL={'O':'#33435a','c':'#7f97ad','c_hi':'#9bb1c4','c_lo':'#667e95','G':'#5d7389','w':'#f5f7f8','w_hi':'#ffffff','w_lo':'#dfe5ea',
+ 'k':'#7a2f3a','t':'#ffffff','B':'#3aa6e8','W':'#ffffff','s':'#f4f7fb','e':'#1e2430','*':'#ffffff','r':'#4a5a74'}
+def shark_img(scale=1): return render(eyes(SHARK,5),SHARK_PAL,scale)
 if __name__=='__main__':
     a=bear_img(14); b=ham_img(14)
     s=Image.new('RGBA',(a.width*2+80,a.height+40),(255,255,255,255))
