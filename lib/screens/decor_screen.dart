@@ -73,7 +73,7 @@ class _DecorScreenState extends State<DecorScreen> {
   int get _coins => _decor.available(widget.state.coins);
   int get _stage => widget.state.stageOf(widget.roomId);
   bool get _canPlace => canDecorate(widget.roomId, _stage);
-  List<PlacedThing> get _things => thingsIn(widget.roomId, _stage, _decor);
+  List<PlacedThing> get _things => thingsIn(widget.roomId, _stage, _decor, photo: widget.photo != null);
   (int, int) get _buddySpot => buddySpot(widget.roomId, _things, prefer: _decor.layoutOf(widget.roomId).buddy);
 
   @override
@@ -567,7 +567,7 @@ class _DecorScreenState extends State<DecorScreen> {
           SizedBox(
             width: 22,
             height: 22,
-            child: Image.asset(picked?.day.asset ?? _buddy.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+            child: picked == null ? Image.asset(_buddy.asset, filterQuality: FilterQuality.none) : _picture(picked),
           ),
           const SizedBox(width: 6),
           Flexible(
@@ -588,6 +588,13 @@ class _DecorScreenState extends State<DecorScreen> {
         ],
       ),
     );
+  }
+
+  /// 목록·고른 물건 칸에 보여 줄 그림. 사진 액자는 앱에서 그린다.
+  Widget _picture(PlacedThing t) {
+    final photo = widget.photo;
+    if (t.id == photoFrameId && photo != null) return PhotoFrameIcon(photo);
+    return Image.asset(t.day.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain);
   }
 
   void _setMode(int mode) => setState(() {
@@ -792,6 +799,8 @@ class _DecorScreenState extends State<DecorScreen> {
               .firstWhere((t) => t.key == furnitureKey(f.id)),
       for (final id in _decor.owned)
         if (decorById(id) != null && _decor.roomOf(id) != widget.roomId) decorThing(id, 0, 0),
+      if (widget.photo != null && _decor.layoutOf(widget.roomId).stored.contains(photoFrameId))
+        photoThing(kFrameY, kFrameZ),
     ].whereType<PlacedThing>().where((t) => t.wall == wall).toList();
     if (placed.isEmpty && stored.isEmpty) {
       return [_empty(wall ? '보관함에 벽 장식이 없어요' : '보관함에 가구가 없어요')];
@@ -799,7 +808,7 @@ class _DecorScreenState extends State<DecorScreen> {
     Widget slot(PlacedThing t, bool inRoom) => DecorSlot(
           key: ValueKey(inRoom ? 'placed-${t.key}' : 'stored-${t.key}'),
           name: t.name,
-          picture: Image.asset(t.day.asset, filterQuality: FilterQuality.none, fit: BoxFit.contain),
+          picture: _picture(t),
           status: inRoom ? '방에 있어요' : '보관 중',
           selected: t.key == _selected,
           onTap: inRoom || _canPlace ? () => _tapThing(t, placed: inRoom) : null,

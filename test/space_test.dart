@@ -274,6 +274,21 @@ void main() {
     expect(moved, isNot((20, 25)));
   });
 
+  test('사진 액자는 왼쪽 벽에 걸리고, 옮기거나 보관함에 넣을 수 있다', () {
+    final key = furnitureKey(photoFrameId);
+    expect(thingsIn('bedroom', 3, const DecorData()).any((t) => t.key == key), isFalse, reason: '사진이 없으면 액자도 없다');
+    final things = thingsIn('bedroom', 3, const DecorData(), photo: true);
+    final frame = things.firstWhere((t) => t.key == key);
+    expect(frame.wall, isTrue);
+    expect(fits('bedroom', 3, things, frame, frame.a, frame.b), isTrue);
+    final moved = const DecorData().moveFurniture('bedroom', photoFrameId, 12, 24);
+    final at = thingsIn('bedroom', 3, moved, photo: true).firstWhere((t) => t.key == key);
+    expect((at.a, at.b), (12, 24));
+    final stored = moved.storeFurniture('bedroom', photoFrameId);
+    expect(thingsIn('bedroom', 3, stored, photo: true).any((t) => t.key == key), isFalse);
+    expect(DecorData.fromJson(stored.toJson()).layoutOf('bedroom').stored, contains(photoFrameId));
+  });
+
   test('침실은 첫 미션으로 상자를 치우면(1단계) 꾸밀 수 있다', () {
     expect(canDecorate('bedroom', 0), isFalse);
     expect(canDecorate('bedroom', 1), isTrue);
@@ -620,7 +635,12 @@ void main() {
     await tester.pumpWidget(JeoduitApp(repository: repo, missionsFor: _fixed));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('꾸미기'));
+    // 방이 하나뿐이면 벌집 보기는 없고, 꾸미기는 자물쇠가 걸려 있다.
+    expect(find.byTooltip('벌집 보기'), findsNothing);
+    await tester.tap(find.byKey(const Key('decorLocked')));
+    await tester.pumpAndSettle();
+    expect(find.text('아직 잠겨 있어요'), findsOneWidget);
+    await tester.tap(find.text('상점 구경하기'));
     await tester.pumpAndSettle();
     expect(find.text('꾸미기는 이렇게 해요'), findsNothing, reason: '열리기 전엔 가이드 대신 안내 띠');
     expect(find.text('미션을 하나 하면 꾸미기가 열려요'), findsOneWidget);
