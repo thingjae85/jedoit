@@ -14,7 +14,7 @@ from iso2 import Scene, render
 from rooms2 import (N, window, sun, crate, books_floor, plant_small, plant_big, mat, dumbbell, shoes, bed,
                     nightstand, cabinet, fairy, desk, desk_items, monitor, lamp, chair, rug, frames, drawer, bin_)
 from hive import base_col, bookshelf, armchair, floor_lamp, side_table, hexpoly
-from chibi import bear_img, ham_img
+from chibi import bear_img, ham_img, shark_img
 import decor
 
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
@@ -265,7 +265,7 @@ def main():
         os.makedirs(d, exist_ok=True)
 
     bear, ham = bear_img(1), ham_img(1)
-    save_png(bear, 'bear.png'); save_png(ham, 'hamster.png')
+    save_png(bear, 'bear.png'); save_png(ham, 'hamster.png'); save_png(shark_img(1), 'shark.png')
     save_png(locked_cell(), 'locked.png')
     hm = hexmask()
 
