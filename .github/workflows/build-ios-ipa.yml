@@ -26,8 +26,9 @@ jobs:
           flutter create --platforms=ios --org com.thingjae85 --project-name jeoduit .
           flutter pub get
 
-      - name: iPhone 사진 및 카메라 권한 설명 설정
+      - name: iPhone 앱 이름 및 권한 설명 설정
         run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 저두잇" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 미션 인증에 사용할 사진을 선택합니다." ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 미션 인증 사진과 영상을 촬영합니다." ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 미션 인증 영상을 녹화할 때 마이크를 사용합니다." ios/Runner/Info.plist
