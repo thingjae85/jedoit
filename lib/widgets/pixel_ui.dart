@@ -278,8 +278,11 @@ class TinyButton extends StatelessWidget {
 
 // ---------- 게임 화면 부품 ----------
 
-/// 제목·버튼·숫자에 쓰는 도트 글꼴 (갈무리11 굵게). 본문은 읽기 쉬운 기본 글꼴을 그대로 쓴다.
-const kGameFont = 'Galmuri';
+/// 앱 전체 글꼴 (페이퍼로지). 없는 글자는 기기 기본 글꼴로 대신 그린다.
+const kAppFont = 'Paperlogy';
+
+/// 제목·버튼·숫자에 쓰는 글꼴. 지금은 본문과 같은 앱 글꼴을 쓴다.
+const kGameFont = kAppFont;
 
 TextStyle gameText({double size = 12, Color color = JdColors.ink, double? height}) => TextStyle(
       fontFamily: kGameFont,
