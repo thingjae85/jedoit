@@ -287,6 +287,7 @@ class _RoomScreenState extends State<RoomScreen> {
       builder: (_) => ChatScreen(
         chat: widget.chat ?? SupabaseChatService(),
         roomId: widget.roomId,
+        rooms: widget.rooms,
         title: s == null ? '챌린지' : '${s.challengeName} 챌린지',
         members: _members,
       ),

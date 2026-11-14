@@ -47,8 +47,9 @@ abstract class ChatService {
 
   Future<void> send(String roomId, String body);
 
-  /// 새 메시지가 생기면 [onNew]를 부른다. 돌려준 함수를 부르면 구독을 끝낸다.
-  void Function() listen(String roomId, void Function() onNew);
+  /// 새 메시지가 생기면 [onNew]를, 참가자 인증이 생기거나 바뀌면 [onCheckin]을 부른다.
+  /// 돌려준 함수를 부르면 구독을 끝낸다.
+  void Function() listen(String roomId, void Function() onNew, {void Function()? onCheckin});
 }
 
 class SupabaseChatService implements ChatService {
@@ -65,17 +66,25 @@ class SupabaseChatService implements ChatService {
       _db.rpc('send_room_message', params: {'r': roomId, 'body': body});
 
   @override
-  void Function() listen(String roomId, void Function() onNew) {
-    final channel = _db
-        .channel('room-chat-$roomId')
-        .onPostgresChanges(
+  void Function() listen(String roomId, void Function() onNew, {void Function()? onCheckin}) {
+    final filter = PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'room_id', value: roomId);
+    var channel = _db.channel('room-chat-$roomId').onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'room_messages',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'room_id', value: roomId),
+          filter: filter,
           callback: (_) => onNew(),
-        )
-        .subscribe();
+        );
+    if (onCheckin != null) {
+      channel = channel.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'checkin_slots',
+        filter: filter,
+        callback: (_) => onCheckin(),
+      );
+    }
+    channel.subscribe();
     return () {
       _db.removeChannel(channel);
     };

@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jeoduit/models/room.dart';
 import 'package:jeoduit/screens/chat_screen.dart';
 import 'package:jeoduit/services/chat_service.dart';
+import 'package:jeoduit/services/room_service.dart';
+import 'package:jeoduit/widgets/room_feed.dart';
 
 class _FakeChat implements ChatService {
   final stored = <ChatMessage>[];
@@ -39,10 +41,27 @@ class _FakeChat implements ChatService {
   }
 
   @override
-  void Function() listen(String roomId, void Function() onNew) {
+  void Function() listen(String roomId, void Function() onNew, {void Function()? onCheckin}) {
     this.onNew = onNew;
     return () => unlistened = true;
   }
+}
+
+class _FakeRooms implements RoomService {
+  List<FeedItem> items = [];
+  final reacted = <String>[];
+
+  @override
+  Future<List<FeedItem>> feed(String roomId) async => items;
+
+  @override
+  Future<bool> toggleReaction(String roomId, FeedItem item, Reaction reaction) async {
+    reacted.add('${item.nickname}:${reaction.serverName}');
+    return !item.mine(reaction);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
@@ -80,5 +99,41 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.textContaining('첫 인사'), findsOneWidget);
+  });
+
+  testWidgets('단톡방: 친구 인증이 "인증했어요" 카드로 뜨고, 누르면 크게 보고 응원할 수 있다', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final chat = _FakeChat()..friendSays('나 지금 정리 시작!');
+    final rooms = _FakeRooms()
+      ..items = [
+        FeedItem(
+          nickname: '민지',
+          nicknameNo: 1,
+          isMe: false,
+          date: DateTime(2026, 11, 14),
+          checkedAt: DateTime.utc(2026, 11, 14, 3, 30),
+          media: FeedMedia.none,
+          note: '책상 위 컵 치웠어요',
+          claps: 1,
+        ),
+      ];
+    await tester.pumpWidget(MaterialApp(
+      home: ChatScreen(chat: chat, rooms: rooms, roomId: 'room-1', title: '챌린지', members: members, poll: null),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('민지님이 인증했어요'), findsOneWidget);
+    expect(find.text('👏 1'), findsOneWidget);
+
+    await tester.tap(find.text('민지님이 인증했어요'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('reaction-민지#1@2026-11-14-fire')));
+    await tester.pumpAndSettle();
+    expect(rooms.reacted, ['민지:fire']);
+
+    Navigator.of(tester.element(find.byType(FeedCard))).pop();
+    await tester.pumpAndSettle();
+    expect(find.text('👏 1  🔥 1'), findsOneWidget);
   });
 }

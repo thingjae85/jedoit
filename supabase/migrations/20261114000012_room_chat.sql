@@ -1,6 +1,6 @@
 -- 12단계: 챌린지방 단톡방
 -- 방 참가자끼리 글로 이야기를 나눈다. 참가 중(joined)인 사람만 읽고 쓸 수 있다.
--- 새 메시지는 Supabase Realtime으로 바로 전달된다(앱은 10초마다 한 번 더 확인한다).
+-- 새 메시지와 참가자 인증은 Supabase Realtime으로 바로 전달된다(앱은 10초마다 한 번 더 확인한다).
 
 create table if not exists public.room_messages (
   id bigint generated always as identity primary key,
@@ -20,14 +20,20 @@ create policy "members read messages" on public.room_messages
 -- 쓰기 정책 없음: 아래 send_room_message 함수로만 쓴다.
 
 -- Realtime 켜기 (이미 켜져 있으면 넘어간다)
+-- room_messages: 새 메시지, checkin_slots: 단톡방에 뜨는 "인증했어요" 카드.
+-- checkin_slots는 기존 "members read checkins" 정책대로 방 참가자에게만 전달된다.
 do $$
+declare
+  t text;
 begin
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'room_messages'
-  ) then
-    alter publication supabase_realtime add table public.room_messages;
-  end if;
+  foreach t in array array['room_messages', 'checkin_slots'] loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
 end $$;
 
 -- 메시지 보내기. 앞뒤 공백을 지우고 1~500자만 받는다. 새 메시지 번호를 돌려준다.
