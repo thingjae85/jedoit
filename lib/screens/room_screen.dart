@@ -5,11 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../models/room.dart';
+import '../services/chat_service.dart';
 import '../services/room_service.dart';
 import '../theme.dart';
 import '../utils/format.dart';
 import '../widgets/jd_widgets.dart';
 import '../widgets/room_feed.dart';
+import 'chat_screen.dart';
 import 'checkin_screen.dart';
 
 /// 초대 링크: 앱 주소에 `?invite=코드`를 붙인다. OAuth의 `code` 파라미터와 겹치지 않는다.
@@ -39,9 +41,13 @@ class RoomScreen extends StatefulWidget {
     required this.roomId,
     this.now = DateTime.now,
     this.autoRefresh = const Duration(seconds: 8),
+    this.chat,
   });
 
   final RoomService rooms;
+
+  /// 단톡방. 비워 두면 단톡방을 열 때 Supabase로 만든다.
+  final ChatService? chat;
   final String roomId;
   final DateTime Function() now;
 
@@ -268,13 +274,37 @@ class _RoomScreenState extends State<RoomScreen> {
     }
   }
 
+  /// 모집·예약·진행·종료된 방에서 단톡방을 열 수 있다.
+  bool _chatOpen(RoomSummary? s) {
+    if (s == null) return false;
+    final status = s.statusAt(widget.now());
+    return status != RoomStatus.cancelled && status != RoomStatus.expired;
+  }
+
+  void _openChat() {
+    final s = _summary;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        chat: widget.chat ?? SupabaseChatService(),
+        roomId: widget.roomId,
+        rooms: widget.rooms,
+        title: s == null ? '챌린지' : '${s.challengeName} 챌린지',
+        members: _members,
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final summary = _summary;
     return Scaffold(
       appBar: AppBar(
         title: Text(summary == null ? '챌린지' : '${summary.challengeName} 챌린지'),
-        actions: [IconButton(tooltip: '새로고침', onPressed: _load, icon: const Icon(Icons.refresh))],
+        actions: [
+          if (_chatOpen(summary))
+            IconButton(tooltip: '단톡방', onPressed: _openChat, icon: const Icon(Icons.chat_bubble_outline)),
+          IconButton(tooltip: '새로고침', onPressed: _load, icon: const Icon(Icons.refresh)),
+        ],
       ),
       body: summary == null
           ? Center(
@@ -317,6 +347,10 @@ class _RoomScreenState extends State<RoomScreen> {
         const SizedBox(height: 4),
         Text(_statusDetail(s, status), style: const TextStyle(fontSize: 14, color: JdColors.subtle)),
         const SizedBox(height: 18),
+        if (_chatOpen(s)) ...[
+          _ChatEntry(memberCount: _members.length, onTap: _openChat),
+          const SizedBox(height: 16),
+        ],
         if (status == RoomStatus.recruiting) _InviteCard(code: s.inviteCode, link: inviteLink(Uri.base, s.inviteCode)),
         if (status == RoomStatus.active || status == RoomStatus.finished) _ProgressCard(summary: s, feed: _feed, now: now),
         if (showChecks) ...[
@@ -456,6 +490,46 @@ class _RoomScreenState extends State<RoomScreen> {
         RoomStatus.cancelled => '새 방을 만들 수 있어요.',
         RoomStatus.expired => '새 방을 만들 수 있어요.',
       };
+}
+
+/// 방 화면에서 단톡방으로 들어가는 줄.
+class _ChatEntry extends StatelessWidget {
+  const _ChatEntry({required this.memberCount, required this.onTap});
+
+  final int memberCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: JdColors.togetherTint,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(Icons.forum_outlined, color: JdColors.together),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('단톡방', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    Text(memberCount > 0 ? '방 친구 $memberCount명과 이야기 나누기' : '방 친구들과 이야기 나누기',
+                        style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: JdColors.faint),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _InviteCard extends StatelessWidget {
