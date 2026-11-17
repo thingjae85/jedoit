@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config.dart';
 import '../models/mission_record.dart';
 import 'draft_store.dart';
 
@@ -63,9 +64,11 @@ class SupabaseAccountService extends AccountService {
   @override
   Future<void> signInWithGoogle() async {
     // 웹에서는 같은 탭이 Google로 이동했다가 현재 주소로 돌아온다.
+    // 앱에서는 Safari로 로그인한 뒤 앱 전용 주소로 앱에 돌아온다.
     await _auth.signInWithOAuth(
       OAuthProvider.google,
-      redirectTo: kIsWeb ? Uri.base.removeFragment().toString() : null,
+      redirectTo: kIsWeb ? Uri.base.removeFragment().toString() : appAuthRedirect,
+      authScreenLaunchMode: kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
     );
   }
 

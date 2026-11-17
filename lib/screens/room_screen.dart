@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../config.dart';
 import '../models/room.dart';
 import '../services/chat_service.dart';
 import '../services/room_service.dart';
@@ -351,7 +353,7 @@ class _RoomScreenState extends State<RoomScreen> {
           _ChatEntry(memberCount: _members.length, onTap: _openChat),
           const SizedBox(height: 16),
         ],
-        if (status == RoomStatus.recruiting) _InviteCard(code: s.inviteCode, link: inviteLink(Uri.base, s.inviteCode)),
+        if (status == RoomStatus.recruiting) _InviteCard(code: s.inviteCode, link: inviteLink(kIsWeb ? Uri.base : Uri.parse(webAppUrl), s.inviteCode)),
         if (status == RoomStatus.active || status == RoomStatus.finished) _ProgressCard(summary: s, feed: _feed, now: now),
         if (showChecks) ...[
           const SizedBox(height: 24),

@@ -1,4 +1,4 @@
-Copyright &copy; 2019–2025 Lee Minseo (quiple@quiple.dev)
+Copyright © 2024 PT& (피티앤)
 
 This font software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

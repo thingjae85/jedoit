@@ -49,6 +49,8 @@
 | `web/` | Flutter Web 설정 (index.html, manifest) |
 | `assets/space/` | 내 공간 도트 그림 (방 껍데기 낮·밤, 가구·소품 낱장, 캐릭터, 닫힌 칸) |
 | `tools/space_art/` | 도트 그림을 만드는 Python 스크립트 |
+| `assets/fonts/` | 앱 글꼴 페이퍼로지 (SIL OFL 1.1) |
+| `tools/fonts/` | 글꼴 정리 스크립트 (빈 글자 빼기) |
 | `scripts/` | Windows 실행 스크립트 |
 | `supabase/migrations/` | Supabase SQL 변경 파일 (순서대로 적용, 3주차부터 사용) |
 | `.github/workflows/` | GitHub Pages 자동 배포 |
