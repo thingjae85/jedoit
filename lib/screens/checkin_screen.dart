@@ -17,8 +17,15 @@ class PickedFile {
 
 typedef FilePicker = Future<PickedFile?> Function();
 
+/// 휴대폰 원본 사진(수천 px, 수 MB)을 그대로 받으면 앱 안에서 줄이는 데 몇 초씩 멈춘다.
+/// 고를 때 기기(브라우저)가 먼저 긴 변 [maxLongSide]px로 줄여 주게 한다. 위치정보 제거는 그 뒤 [prepareCheckinPhoto]가 한다.
 Future<PickedFile?> _pickImage() async {
-  final f = await ImagePicker().pickImage(source: ImageSource.gallery);
+  final f = await ImagePicker().pickImage(
+    source: ImageSource.gallery,
+    maxWidth: maxLongSide.toDouble(),
+    maxHeight: maxLongSide.toDouble(),
+    imageQuality: 90,
+  );
   return f == null ? null : PickedFile(await f.readAsBytes(), f.name);
 }
 

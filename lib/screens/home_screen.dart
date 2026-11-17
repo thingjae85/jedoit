@@ -359,8 +359,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
     }
     final offerSignIn = widget.account != null && !widget.account!.signedIn;
-    ScaffoldMessenger.of(context).showSnackBar(
+    // 미션을 연달아 하면 알림이 줄줄이 쌓여 아래 탭을 오래 가리므로, 이전 알림은 바로 치운다.
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
       SnackBar(
+        duration: const Duration(seconds: 3),
         content: Text('+$coinsPerMission 코인 · $message'),
         action: offerSignIn
             ? SnackBarAction(label: 'Google 로그인', onPressed: _signIn)
