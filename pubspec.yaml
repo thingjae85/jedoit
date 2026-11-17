@@ -30,8 +30,18 @@ flutter:
     - assets/space/decor/
     - assets/space/surface/
   fonts:
-    # 갈무리11 굵게 (SIL OFL 1.1, assets/fonts/Galmuri-OFL.md). 자주 쓰는 한글 2350자만 남겼다.
-    - family: Galmuri
+    # 페이퍼로지 (SIL OFL 1.1, assets/fonts/Paperlogy-OFL.md). 앱에서 쓰는 굵기(400~800)만 넣었다.
+    # 원본에서 그림이 빈 한글 8,392자는 tools/fonts/strip_empty_glyphs.py로 목록에서 뺐다.
+    # 이 글꼴에 없는 글자(드문 한글, 이모지, 일부 기호)는 기기 기본 글꼴이 대신 그린다.
+    - family: Paperlogy
       fonts:
-        - asset: assets/fonts/Galmuri11-Bold.ttf
+        - asset: assets/fonts/Paperlogy-4Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Paperlogy-5Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Paperlogy-6SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Paperlogy-7Bold.ttf
           weight: 700
+        - asset: assets/fonts/Paperlogy-8ExtraBold.ttf
+          weight: 800

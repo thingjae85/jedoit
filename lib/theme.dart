@@ -69,6 +69,7 @@ ThemeData buildTheme() {
   final rounded = RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
   return ThemeData(
     useMaterial3: true,
+    fontFamily: kAppFont,
     colorScheme: scheme,
     scaffoldBackgroundColor: JdColors.paper,
     appBarTheme: const AppBarTheme(
