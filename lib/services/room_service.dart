@@ -228,6 +228,7 @@ class SupabaseRoomService implements RoomService {
           fires: (r['fire_count'] as int?) ?? 0,
           myClap: (r['my_clap'] as bool?) ?? false,
           myFire: (r['my_fire'] as bool?) ?? false,
+          videoSound: (r['video_sound'] as bool?) ?? false,
         ),
     ];
   }
@@ -254,10 +255,16 @@ class SupabaseRoomService implements RoomService {
     } else if (photo != null) {
       ticket = await _upload(roomId, photo, 'jpg', 'image/jpeg');
     }
-    await _db.rpc('submit_checkin', params: {
+    final slot = await _db.rpc('submit_checkin', params: {
       'r': roomId,
       'ticket': ticket,
       'note': note.isEmpty ? null : note,
     });
+    if (video != null && video.sound && slot is Map && slot['slot_date'] != null) {
+      // 소리 설정을 못 남겨도 인증은 이미 저장됐으니 음소거로 보일 뿐이다.
+      try {
+        await _db.rpc('set_checkin_sound', params: {'r': roomId, 'd': slot['slot_date'], 'sound': true});
+      } catch (_) {}
+    }
   }
 }

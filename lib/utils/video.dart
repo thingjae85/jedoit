@@ -7,10 +7,15 @@ const maxVideoSeconds = 5.0;
 
 /// 인증에 올릴 동영상. [ext]는 서버 업로드 경로의 확장자(mp4·mov)다.
 class CheckinVideo {
-  const CheckinVideo(this.bytes, this.ext, this.seconds);
+  const CheckinVideo(this.bytes, this.ext, this.seconds, {this.sound = false});
   final Uint8List bytes;
   final String ext;
   final double seconds;
+
+  /// 친구들에게 소리와 함께 보여 줄지. 기본은 음소거.
+  final bool sound;
+
+  CheckinVideo withSound(bool on) => CheckinVideo(bytes, ext, seconds, sound: on);
 
   String get contentType => ext == 'mov' ? 'video/quicktime' : 'video/mp4';
 }

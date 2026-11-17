@@ -304,6 +304,18 @@ class _CheckInScreenState extends State<CheckInScreen> {
               ],
             ),
           ),
+        if (_video != null) ...[
+          SegmentedButton<bool>(
+            key: const Key('videoSound'),
+            segments: const [
+              ButtonSegment(value: false, icon: Icon(Icons.volume_off), label: Text('음소거')),
+              ButtonSegment(value: true, icon: Icon(Icons.volume_up), label: Text('소리 포함')),
+            ],
+            selected: {_video!.sound},
+            onSelectionChanged: _busy ? null : (v) => setState(() => _video = _video?.withSound(v.first)),
+          ),
+          const SizedBox(height: 12),
+        ],
         Row(
           children: [
             Expanded(
