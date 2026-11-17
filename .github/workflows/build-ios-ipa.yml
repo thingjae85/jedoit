@@ -32,6 +32,11 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 미션 인증에 사용할 사진을 선택합니다." ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 미션 인증 사진과 영상을 촬영합니다." ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 미션 인증 영상을 녹화할 때 마이크를 사용합니다." ios/Runner/Info.plist
+          # Google 로그인 후 Safari에서 앱으로 돌아오는 주소 (lib/config.dart의 appAuthRedirect)
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string com.thingjae85.jeoduit" ios/Runner/Info.plist
 
       - name: iOS 앱 빌드
         run: flutter build ios --release --no-codesign
