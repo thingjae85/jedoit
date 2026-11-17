@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 import '../models/room.dart';
@@ -70,10 +71,17 @@ class _RoomScreenState extends State<RoomScreen> {
   Timer? _timer;
   bool _refreshing = false;
 
+  /// 단톡방에서 아직 안 읽은 친구 메시지 수. 이 기기에서 마지막으로 본 메시지 번호 뒤부터 센다.
+  int _unread = 0;
+  int? _seenChatId;
+
+  ChatService get _chat => widget.chat ?? SupabaseChatService();
+  String get _seenKey => 'jeoduit.chatSeen.${widget.roomId}';
+
   @override
   void initState() {
     super.initState();
-    _load();
+    _load().then((_) => _checkUnread());
     final every = widget.autoRefresh;
     if (every != null) _timer = Timer.periodic(every, (_) => _autoRefresh());
   }
@@ -84,24 +92,66 @@ class _RoomScreenState extends State<RoomScreen> {
     super.dispose();
   }
 
-  /// 친구가 인증하면 새로고침 없이 피드에 나타나고, 알림을 띄운다.
+  /// 친구가 들어오거나 인증하면 새로고침 없이 화면에 나타나고, 알림을 띄운다.
+  /// 단톡방의 안 읽은 메시지 수도 이때 다시 센다.
   Future<void> _autoRefresh() async {
     final s = _summary;
-    if (_refreshing || _busy || s == null || s.statusAt(widget.now()) != RoomStatus.active) return;
+    if (_refreshing || _busy || s == null) return;
+    final status = s.statusAt(widget.now());
+    if (status != RoomStatus.active && status != RoomStatus.recruiting && status != RoomStatus.scheduled) return;
     _refreshing = true;
     try {
-      final before = {for (final f in _feed) f.key};
+      final beforeFeed = {for (final f in _feed) f.key};
+      final beforeMembers = {for (final m in _members) m.displayName};
       await _load();
       if (!mounted) return;
-      final fresh = _feed.where((f) => !f.isMe && !before.contains(f.key)).toList();
-      for (final f in fresh.take(1)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${f.displayName}님이 방금 인증했어요! 응원해 주세요 👏')),
-        );
+      final joined = _members.where((m) => !m.isMe && !beforeMembers.contains(m.displayName)).toList();
+      final fresh = _feed.where((f) => !f.isMe && !beforeFeed.contains(f.key)).toList();
+      final message = joined.isNotEmpty
+          ? '${joined.first.displayName}님이 방에 들어왔어요! 👋'
+          : fresh.isNotEmpty
+              ? '${fresh.first.displayName}님이 방금 인증했어요! 응원해 주세요 👏'
+              : null;
+      if (message != null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(message)));
       }
+      await _checkUnread();
     } finally {
       _refreshing = false;
     }
+  }
+
+  /// 마지막으로 본 뒤 친구가 보낸 메시지 수를 센다. 못 세면 그대로 둔다.
+  Future<void> _checkUnread() async {
+    if (!_chatOpen(_summary)) return;
+    try {
+      if (_seenChatId == null) {
+        try {
+          _seenChatId = (await SharedPreferences.getInstance()).getInt(_seenKey) ?? 0;
+        } catch (_) {
+          _seenChatId = 0;
+        }
+      }
+      final fresh = await _chat.messages(widget.roomId, after: _seenChatId!);
+      final n = fresh.where((m) => !m.isMe).length;
+      if (mounted && n != _unread) setState(() => _unread = n);
+    } catch (_) {}
+  }
+
+  /// 단톡방을 보고 나오면 지금까지 온 메시지를 읽은 것으로 한다.
+  Future<void> _markChatSeen() async {
+    try {
+      final fresh = await _chat.messages(widget.roomId, after: _seenChatId ?? 0);
+      if (fresh.isNotEmpty) {
+        _seenChatId = fresh.map((m) => m.id).reduce((a, b) => a > b ? a : b);
+        try {
+          await (await SharedPreferences.getInstance()).setInt(_seenKey, _seenChatId!);
+        } catch (_) {}
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _unread = 0);
   }
 
   Future<void> _react(FeedItem item, Reaction r) async {
@@ -283,17 +333,19 @@ class _RoomScreenState extends State<RoomScreen> {
     return status != RoomStatus.cancelled && status != RoomStatus.expired;
   }
 
-  void _openChat() {
+  Future<void> _openChat() async {
     final s = _summary;
-    Navigator.of(context).push(MaterialPageRoute(
+    setState(() => _unread = 0);
+    await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ChatScreen(
-        chat: widget.chat ?? SupabaseChatService(),
+        chat: _chat,
         roomId: widget.roomId,
         rooms: widget.rooms,
         title: s == null ? '챌린지' : '${s.challengeName} 챌린지',
         members: _members,
       ),
     ));
+    await _markChatSeen();
   }
 
   @override
@@ -304,7 +356,15 @@ class _RoomScreenState extends State<RoomScreen> {
         title: Text(summary == null ? '챌린지' : '${summary.challengeName} 챌린지'),
         actions: [
           if (_chatOpen(summary))
-            IconButton(tooltip: '단톡방', onPressed: _openChat, icon: const Icon(Icons.chat_bubble_outline)),
+            IconButton(
+              tooltip: _unread > 0 ? '단톡방 (안 읽은 메시지 $_unread개)' : '단톡방',
+              onPressed: _openChat,
+              icon: Badge(
+                isLabelVisible: _unread > 0,
+                label: Text(_unread > 99 ? '99+' : '$_unread'),
+                child: const Icon(Icons.chat_bubble_outline),
+              ),
+            ),
           IconButton(tooltip: '새로고침', onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
       ),
@@ -350,7 +410,7 @@ class _RoomScreenState extends State<RoomScreen> {
         Text(_statusDetail(s, status), style: const TextStyle(fontSize: 14, color: JdColors.subtle)),
         const SizedBox(height: 18),
         if (_chatOpen(s)) ...[
-          _ChatEntry(memberCount: _members.length, onTap: _openChat),
+          _ChatEntry(memberCount: _members.length, unread: _unread, onTap: _openChat),
           const SizedBox(height: 16),
         ],
         if (status == RoomStatus.recruiting) _InviteCard(code: s.inviteCode, link: inviteLink(kIsWeb ? Uri.base : Uri.parse(webAppUrl), s.inviteCode)),
@@ -496,9 +556,10 @@ class _RoomScreenState extends State<RoomScreen> {
 
 /// 방 화면에서 단톡방으로 들어가는 줄.
 class _ChatEntry extends StatelessWidget {
-  const _ChatEntry({required this.memberCount, required this.onTap});
+  const _ChatEntry({required this.memberCount, required this.onTap, this.unread = 0});
 
   final int memberCount;
+  final int unread;
   final VoidCallback onTap;
 
   @override
@@ -520,11 +581,28 @@ class _ChatEntry extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('단톡방', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                    Text(memberCount > 0 ? '방 친구 $memberCount명과 이야기 나누기' : '방 친구들과 이야기 나누기',
-                        style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+                    Text(
+                        unread > 0
+                            ? '새 메시지 $unread개'
+                            : memberCount > 0
+                                ? '방 친구 $memberCount명과 이야기 나누기'
+                                : '방 친구들과 이야기 나누기',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: unread > 0 ? Colors.red.shade700 : JdColors.subtle,
+                            fontWeight: unread > 0 ? FontWeight.w700 : FontWeight.w400)),
                   ],
                 ),
               ),
+              if (unread > 0)
+                Container(
+                  key: const Key('chatUnread'),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  margin: const EdgeInsets.only(right: 4),
+                  decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
+                  child: Text(unread > 99 ? '99+' : '$unread',
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                ),
               const Icon(Icons.chevron_right, color: JdColors.faint),
             ],
           ),

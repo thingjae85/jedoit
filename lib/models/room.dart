@@ -258,6 +258,7 @@ class FeedItem {
     this.fires = 0,
     this.myClap = false,
     this.myFire = false,
+    this.videoSound = false,
   });
 
   final String nickname;
@@ -274,6 +275,9 @@ class FeedItem {
   final int fires;
   final bool myClap;
   final bool myFire;
+
+  /// 올린 사람이 동영상을 소리와 함께 보여 주기로 했는지
+  final bool videoSound;
 
   /// 카드 구분: 같은 사람의 같은 날 인증은 하나뿐이다.
   String get key => '$nickname#$nicknameNo@${date.year}-${date.month}-${date.day}';
@@ -299,6 +303,7 @@ class FeedItem {
       fires: r == Reaction.fire ? fires + delta : fires,
       myClap: r == Reaction.clap ? on : myClap,
       myFire: r == Reaction.fire ? on : myFire,
+      videoSound: videoSound,
     );
   }
 

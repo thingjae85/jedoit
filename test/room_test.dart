@@ -3,10 +3,12 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jeoduit/models/room.dart';
 import 'package:jeoduit/screens/checkin_screen.dart';
 import 'package:jeoduit/screens/room_entry_screen.dart';
 import 'package:jeoduit/screens/room_screen.dart';
+import 'package:jeoduit/services/chat_service.dart';
 import 'package:jeoduit/services/room_service.dart';
 import 'package:jeoduit/utils/photo.dart';
 import 'package:jeoduit/utils/video.dart';
@@ -38,6 +40,29 @@ RoomSummary _summary({
       earned: earned,
       validCount: earned,
     );
+
+class _FakeChat implements ChatService {
+  final stored = <ChatMessage>[];
+
+  void add(String nick, String body, {bool isMe = false}) => stored.add(ChatMessage(
+        id: stored.length + 1,
+        nickname: nick,
+        nicknameNo: 1,
+        isMe: isMe,
+        body: body,
+        sentAt: DateTime.utc(2026, 11, 14, 3, stored.length),
+      ));
+
+  @override
+  Future<List<ChatMessage>> messages(String roomId, {int after = 0}) async =>
+      stored.where((m) => m.id > after).toList();
+
+  @override
+  Future<void> send(String roomId, String body) async => add('명재', body, isMe: true);
+
+  @override
+  void Function() listen(String roomId, void Function() onNew, {void Function()? onCheckin}) => () {};
+}
 
 class _FakeRooms implements RoomService {
   RoomSummary current = _summary();
@@ -445,12 +470,15 @@ void main() {
     await tester.tap(find.text('동영상 (5초 미만)'));
     await tester.pumpAndSettle();
     expect(find.text('동영상 3.0초 선택됨'), findsOneWidget);
+    await tester.tap(find.text('소리 포함'));
+    await tester.pump();
     await tester.enterText(find.widgetWithText(TextField, '한 줄 (선택)'), '책상 위 싹 비움');
     await tester.tap(find.text('오늘 5분 정리를 실제로 했어요'));
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '인증 저장'));
     await tester.pumpAndSettle();
     expect(rooms.uploadedVideo?.seconds, closeTo(3, 0.01));
+    expect(rooms.uploadedVideo?.sound, isTrue);
     expect(rooms.notes, ['책상 위 싹 비움']);
   });
 
@@ -580,6 +608,54 @@ void main() {
     await tester.pump();
     expect(find.byType(FeedCard), findsOneWidget);
     expect(find.text('영희님이 방금 인증했어요! 응원해 주세요 👏'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('모집 중인 방: 친구가 들어오면 새로고침 없이 참가자에 보이고 알림이 뜬다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms();
+    await tester.pumpWidget(_wrap(
+        RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now, autoRefresh: const Duration(seconds: 5))));
+    await tester.pumpAndSettle();
+    expect(find.text('참가자 1명'), findsOneWidget);
+
+    rooms.people = [
+      ...rooms.people,
+      const RoomMember(nickname: '영희', nicknameNo: 1, isMe: false, isHost: false, checkins: 0),
+    ];
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('참가자 2명'), findsOneWidget);
+    expect(find.text('영희님이 방에 들어왔어요! 👋'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('단톡방: 친구 새 메시지가 오면 빨간 숫자가 뜨고, 보고 나오면 사라진다', (tester) async {
+    _tall(tester);
+    SharedPreferences.setMockInitialValues({});
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 0, active: 2, n0: 2, goal: 4, total: 6);
+    final chat = _FakeChat()..add('명재', '안녕', isMe: true);
+    await tester.pumpWidget(_wrap(RoomScreen(
+        rooms: rooms, roomId: 'room-1', now: () => _now, chat: chat, autoRefresh: const Duration(seconds: 5))));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chatUnread')), findsNothing);
+
+    chat
+      ..add('영희', '나 인증함')
+      ..add('영희', '너도 해');
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const Key('chatUnread')), findsOneWidget);
+    expect(find.text('새 메시지 2개'), findsOneWidget);
+
+    await tester.tap(find.text('새 메시지 2개'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chatUnread')), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 

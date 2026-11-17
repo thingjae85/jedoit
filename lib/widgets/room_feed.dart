@@ -47,7 +47,7 @@ class FeedCard extends StatelessWidget {
           if (item.isBeforeAfter)
             BeforeAfterPager(item: item)
           else if (item.media == FeedMedia.video && item.mediaUrl != null)
-            FeedVideo(url: item.mediaUrl!)
+            FeedVideo(url: item.mediaUrl!, sound: item.videoSound)
           else if (item.media == FeedMedia.photo && item.mediaUrl != null)
             AspectRatio(aspectRatio: 4 / 3, child: _NetImage(item.mediaUrl!))
           else if (item.media == FeedMedia.none)
@@ -373,10 +373,12 @@ class _BeforeAfterPagerState extends State<BeforeAfterPager> {
   }
 }
 
-/// 5초 미만 동영상: 눌러서 재생, 소리 없이 반복.
+/// 5초 미만 동영상: 눌러서 재생하고 반복한다. 올린 사람이 소리를 켜 두었으면 소리와 함께,
+/// 아니면 소리 없이 재생한다. 소리 있는 동영상은 오른쪽 아래 버튼으로 끄고 켤 수 있다.
 class FeedVideo extends StatefulWidget {
-  const FeedVideo({super.key, required this.url});
+  const FeedVideo({super.key, required this.url, this.sound = false});
   final String url;
+  final bool sound;
 
   @override
   State<FeedVideo> createState() => _FeedVideoState();
@@ -385,6 +387,12 @@ class FeedVideo extends StatefulWidget {
 class _FeedVideoState extends State<FeedVideo> {
   VideoPlayerController? _controller;
   bool _failed = false;
+  late bool _muted = !widget.sound;
+
+  Future<void> _toggleMute() async {
+    setState(() => _muted = !_muted);
+    await _controller?.setVolume(_muted ? 0 : 1);
+  }
 
   @override
   void dispose() {
@@ -399,7 +407,7 @@ class _FeedVideoState extends State<FeedVideo> {
       setState(() => _controller = created);
       try {
         await created.initialize();
-        await created.setVolume(0);
+        await created.setVolume(_muted ? 0 : 1);
         await created.setLooping(true);
         await created.play();
       } catch (_) {
@@ -429,6 +437,16 @@ class _FeedVideoState extends State<FeedVideo> {
                 child: _failed
                     ? const Text('동영상을 재생하지 못했어요', style: TextStyle(color: Colors.white))
                     : const Icon(Icons.play_circle_fill, color: Colors.white, size: 56),
+              ),
+            if (widget.sound)
+              Positioned(
+                right: 8,
+                bottom: 8,
+                child: IconButton.filledTonal(
+                  tooltip: _muted ? '소리 켜기' : '소리 끄기',
+                  onPressed: _toggleMute,
+                  icon: Icon(_muted ? Icons.volume_off : Icons.volume_up),
+                ),
               ),
           ],
         ),
