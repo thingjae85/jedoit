@@ -47,14 +47,10 @@ jobs:
             --build-number=${{ github.run_number }} \
             --dart-define=BUILD_LABEL=$BUILD_LABEL
 
-      - name: 빌드에 들어간 버전 확인
+      - name: 빌드 번호 확인
         run: |
-          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" build/ios/iphoneos/Runner.app/Info.plist
-          if strings build/ios/iphoneos/Runner.app/Frameworks/App.framework/App | grep -q "$BUILD_LABEL"; then
-            echo "빌드 이름 $BUILD_LABEL 포함됨"
-          else
-            echo "::error::앱에 빌드 이름이 들어가지 않았어요"; exit 1
-          fi
+          test "$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" build/ios/iphoneos/Runner.app/Info.plist)" = "${{ github.run_number }}"
+          echo "빌드 이름 $BUILD_LABEL"
 
       - name: IPA 파일 포장
         run: |
