@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import '../models/buddy.dart';
 import '../models/decor.dart';
 import '../models/mission.dart';
@@ -1827,6 +1828,13 @@ class _MyPage extends StatelessWidget {
               builder: (context, _) => _AccountCard(
                   account: account, onSignIn: onSignIn, onDelete: onDelete),
             ),
+          if (buildLabel.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Text('앱 버전 $buildLabel',
+                key: const Key('buildLabel'),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall),
+          ],
         ],
       ),
     );
