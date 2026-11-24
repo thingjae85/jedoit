@@ -9,3 +9,6 @@ const webAppUrl = 'https://thingjae85.github.io/jedoit/';
 /// iPhone 앱에서 Google 로그인 후 앱으로 돌아오는 주소.
 /// Supabase Authentication → URL Configuration → Redirect URLs에도 같은 값을 넣어야 한다.
 const appAuthRedirect = 'com.thingjae85.jeoduit://login-callback';
+
+/// iPhone 앱 빌드 때 붙이는 이름(날짜-빌드 번호). 마이 탭 아래에 보여서 새 앱이 깔렸는지 확인할 수 있다.
+const buildLabel = String.fromEnvironment('BUILD_LABEL');

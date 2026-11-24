@@ -38,19 +38,34 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string com.thingjae85.jeoduit" ios/Runner/Info.plist
 
+      - name: 빌드 이름 정하기
+        run: echo "BUILD_LABEL=$(TZ=Asia/Seoul date +%m%d)-${{ github.run_number }}" >> "$GITHUB_ENV"
+
       - name: iOS 앱 빌드
-        run: flutter build ios --release --no-codesign
+        run: |
+          flutter build ios --release --no-codesign \
+            --build-number=${{ github.run_number }} \
+            --dart-define=BUILD_LABEL=$BUILD_LABEL
+
+      - name: 빌드에 들어간 버전 확인
+        run: |
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" build/ios/iphoneos/Runner.app/Info.plist
+          if strings build/ios/iphoneos/Runner.app/Frameworks/App.framework/App | grep -q "$BUILD_LABEL"; then
+            echo "빌드 이름 $BUILD_LABEL 포함됨"
+          else
+            echo "::error::앱에 빌드 이름이 들어가지 않았어요"; exit 1
+          fi
 
       - name: IPA 파일 포장
         run: |
           mkdir -p Payload dist
           cp -R build/ios/iphoneos/Runner.app Payload/
-          zip -qry dist/jeoduit-unsigned.ipa Payload
+          zip -qry "dist/jeoduit-$BUILD_LABEL.ipa" Payload
 
       - name: IPA 다운로드 파일 업로드
         uses: actions/upload-artifact@v4
         with:
-          name: jeoduit-iphone-ipa
-          path: dist/jeoduit-unsigned.ipa
+          name: jeoduit-ipa-${{ env.BUILD_LABEL }}
+          path: dist/jeoduit-${{ env.BUILD_LABEL }}.ipa
           if-no-files-found: error
           retention-days: 7
