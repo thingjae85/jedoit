@@ -698,6 +698,23 @@ void main() {
     await tester.tap(find.byTooltip('하루 줄이기'));
     await tester.pump();
     expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '5일');
+    for (var i = 0; i < 6; i++) {
+      await tester.tap(find.byTooltip('하루 줄이기'));
+      await tester.pump();
+    }
+    expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '1일');
+    expect(find.textContaining('1인당 목표 1회'), findsOneWidget);
+    await tester.tap(find.text('3일로'));
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '3일');
+    await tester.tap(find.text('+5일'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.pump();
 
     await tester.tap(find.text('직접 만들기'));
     await tester.pump();
