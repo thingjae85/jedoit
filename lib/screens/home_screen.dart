@@ -22,7 +22,6 @@ import '../widgets/jd_widgets.dart';
 import '../widgets/pixel_ui.dart';
 import '../widgets/space_view.dart';
 import 'decor_screen.dart';
-import 'design_compare_screen.dart';
 import 'mission_screen.dart';
 import 'records_screen.dart';
 import 'room_entry_screen.dart';
@@ -650,12 +649,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _openDesignCompare() {
-    Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => const DesignCompareScreen()),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final Widget body = switch (_tab) {
@@ -670,8 +663,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _ => _MyPage(
           account: widget.account,
           onSignIn: _signIn,
-          onDelete: _requestDeletion,
-          onDesignCompare: _openDesignCompare),
+          onDelete: _requestDeletion),
     };
     return Scaffold(
       body: body,
@@ -1807,13 +1799,11 @@ class _MyPage extends StatelessWidget {
   const _MyPage(
       {required this.account,
       required this.onSignIn,
-      required this.onDelete,
-      required this.onDesignCompare});
+      required this.onDelete});
 
   final AccountService? account;
   final VoidCallback onSignIn;
   final VoidCallback onDelete;
-  final VoidCallback onDesignCompare;
 
   @override
   Widget build(BuildContext context) {
@@ -1837,15 +1827,6 @@ class _MyPage extends StatelessWidget {
               builder: (context, _) => _AccountCard(
                   account: account, onSignIn: onSignIn, onDelete: onDelete),
             ),
-          const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.compare_outlined),
-            title: const Text('시안 비교'),
-            subtitle: const Text('인터뷰용 공동 책상 시안'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: onDesignCompare,
-          ),
         ],
       ),
     );

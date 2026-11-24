@@ -45,7 +45,7 @@ const lateStartHour = 18;
 /// [now]에 시작을 확정할 때 '내일부터'를 권하는지 (한국 시간 기준).
 bool suggestTomorrow(DateTime now) => now.toUtc().add(const Duration(hours: 9)).hour >= lateStartHour;
 
-const minChallengeDays = 3;
+const minChallengeDays = 1;
 const maxChallengeDays = 60;
 const challengeDayAdds = [(3, '+3일'), (5, '+5일'), (7, '+7일'), (30, '+한 달')];
 
