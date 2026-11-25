@@ -29,6 +29,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
   ChallengeKind _kind = ChallengeKind.tidy;
   final _title = TextEditingController(text: ChallengeKind.tidy.defaultTitle);
   int _days = 3;
+  bool _captureOnly = false;
   String? _error;
 
   @override
@@ -98,7 +99,8 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
       final nick = _nickname.text.trim();
       final id = _joining
           ? await widget.rooms.join(_code.text.trim().toUpperCase(), nick)
-          : await widget.rooms.create(nick, mode: _mode, kind: _kind, title: _title.text.trim(), days: _days);
+          : await widget.rooms.create(nick, mode: _mode, kind: _kind, title: _title.text.trim(), days: _days,
+              captureOnly: _mode != CheckinMode.light && _captureOnly);
       if (mounted) Navigator.of(context).pop(id);
     } catch (e) {
       if (!mounted) return;
@@ -270,6 +272,15 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
                 ],
               ),
             ),
+            if (_mode != CheckinMode.light)
+              SwitchListTile(
+                key: const Key('captureOnly'),
+                value: _captureOnly,
+                onChanged: _busy ? null : (v) => setState(() => _captureOnly = v),
+                title: const Text('바로 찍은 것만 받기'),
+                subtitle: const Text('휴대폰에서는 앨범 대신 카메라로 그 자리에서 찍어 올려요. 컴퓨터에서는 지금처럼 파일을 골라요.'),
+                contentPadding: EdgeInsets.zero,
+              ),
           ],
           if (_error != null) ...[
             const SizedBox(height: 8),

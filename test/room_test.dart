@@ -58,10 +58,19 @@ class _FakeChat implements ChatService {
       stored.where((m) => m.id > after).toList();
 
   @override
-  Future<void> send(String roomId, String body) async => add('명재', body, isMe: true);
+  Future<void> send(String roomId, String body, {int? replyTo, CheckinRef? replyCheckin}) async =>
+      add('명재', body, isMe: true);
 
   @override
-  void Function() listen(String roomId, void Function() onNew, {void Function()? onCheckin}) => () {};
+  Future<Map<int, List<ReactionCount>>> reactions(String roomId) async => {};
+
+  @override
+  Future<bool> toggleReaction(String roomId, int messageId, MessageEmoji emoji) async => true;
+
+  @override
+  void Function() listen(String roomId, void Function() onNew,
+          {void Function()? onCheckin, void Function()? onReaction}) =>
+      () {};
 }
 
 class _FakeRooms implements RoomService {
@@ -91,7 +100,9 @@ class _FakeRooms implements RoomService {
     ChallengeKind kind = ChallengeKind.tidy,
     String title = '책상 한 구역 정리',
     int days = 3,
+    bool captureOnly = false,
   }) async {
+    if (captureOnly) created.add('captureOnly');
     created.add(kind == ChallengeKind.tidy && days == 3
         ? '$nickname:${mode.serverName}'
         : '$nickname:${mode.serverName}:${kind.serverName}:$title:$days');
@@ -480,6 +491,140 @@ void main() {
     expect(rooms.uploadedVideo?.seconds, closeTo(3, 0.01));
     expect(rooms.uploadedVideo?.sound, isTrue);
     expect(rooms.notes, ['책상 위 싹 비움']);
+  });
+
+  testWidgets('휴대폰에서는 카메라로 바로 찍은 사진·영상을 올릴 수 있다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms();
+    final photo = img.encodePng(img.Image(width: 40, height: 30));
+    await tester.pumpWidget(_wrap(CheckInScreen(
+      rooms: rooms,
+      roomId: 'room-1',
+      showCamera: true,
+      camera: () async => PickedFile(photo, 'shot.jpg'),
+      videoCamera: () async => PickedFile(_fakeMp4(4.8), 'capture.MOV'),
+    )));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('영상 찍기'));
+    await tester.pumpAndSettle();
+    expect(find.text('동영상 4.8초 선택됨'), findsOneWidget);
+
+    await tester.tap(find.text('사진 찍기'));
+    await tester.pumpAndSettle();
+    expect(find.text('동영상 4.8초 선택됨'), findsNothing);
+    await tester.tap(find.text('오늘 5분 정리를 실제로 했어요'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '인증 저장'));
+    await tester.pumpAndSettle();
+    expect(rooms.uploaded, isNotNull);
+  });
+
+  testWidgets('바로 찍은 것만 받는 방: 휴대폰에서는 앨범 버튼이 없고, 컴퓨터에서는 그대로 고른다', (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(_wrap(CheckInScreen(rooms: _FakeRooms(), roomId: 'room-1', showCamera: true, captureOnly: true)));
+    await tester.pumpAndSettle();
+    expect(find.text('사진 찍기'), findsOneWidget);
+    expect(find.text('동영상 (5초 미만)'), findsNothing);
+    expect(find.textContaining('바로 찍은 사진·영상만'), findsOneWidget);
+
+    await tester.pumpWidget(_wrap(CheckInScreen(
+        key: const ValueKey('pc'), rooms: _FakeRooms(), roomId: 'room-1', showCamera: false, captureOnly: true)));
+    await tester.pumpAndSettle();
+    expect(find.text('동영상 (5초 미만)'), findsOneWidget);
+  });
+
+  testWidgets('방을 만들 때 "바로 찍은 것만 받기"를 켤 수 있다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms();
+    await tester.pumpWidget(_wrap(RoomEntryScreen(rooms: rooms)));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('captureOnly')));
+    await tester.tap(find.byKey(const Key('captureOnly')));
+    await tester.pump();
+    await tester.enterText(find.widgetWithText(TextField, '이 방에서 쓸 닉네임'), '명재');
+    await tester.pump();
+    await tester.ensureVisible(find.widgetWithText(FilledButton, '방 만들기'));
+    await tester.tap(find.widgetWithText(FilledButton, '방 만들기'));
+    await tester.pumpAndSettle();
+    expect(rooms.created, ['captureOnly', '명재:result']);
+  });
+
+  testWidgets('자르기를 쓸 수 있으면 5초가 넘는 동영상은 앞 4.8초를 바로 잘라 쓰고, 구간을 바꿀 수 있다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms();
+    final front = <String>[];
+    final picked = <String>[];
+    await tester.pumpWidget(_wrap(CheckInScreen(
+      rooms: rooms,
+      roomId: 'room-1',
+      showCamera: false,
+      videoPicker: () async => PickedFile(_fakeMp4(12), 'long.MOV', path: '/tmp/long.MOV'),
+      autoTrimmer: (file) async {
+        front.add(file.path!);
+        return _fakeMp4(4.8);
+      },
+      trimmer: (file) async {
+        picked.add(file.path!);
+        return _fakeMp4(4.7);
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('동영상'));
+    await tester.pumpAndSettle();
+    expect(front, ['/tmp/long.MOV']);
+    expect(picked, isEmpty);
+    expect(find.text('동영상 4.8초 선택됨'), findsOneWidget);
+    expect(find.textContaining('5초 미만 동영상만'), findsNothing);
+
+    await tester.tap(find.text('구간 바꾸기'));
+    await tester.pumpAndSettle();
+    expect(picked, ['/tmp/long.MOV']);
+    expect(find.text('동영상 4.7초 선택됨'), findsOneWidget);
+  });
+
+  testWidgets('구간 바꾸기를 그만두면 앞 4.8초를 그대로 쓴다', (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(_wrap(CheckInScreen(
+      rooms: _FakeRooms(),
+      roomId: 'room-1',
+      showCamera: false,
+      videoPicker: () async => PickedFile(_fakeMp4(12), 'long.MOV', path: '/tmp/long.MOV'),
+      autoTrimmer: (file) async => _fakeMp4(4.8),
+      trimmer: (file) async => null,
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('동영상'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('구간 바꾸기'));
+    await tester.pumpAndSettle();
+    expect(find.text('동영상 4.8초 선택됨'), findsOneWidget);
+  });
+
+  testWidgets('짧은 동영상은 자르지 않고 구간 바꾸기도 없다', (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(_wrap(CheckInScreen(
+      rooms: _FakeRooms(),
+      roomId: 'room-1',
+      showCamera: false,
+      videoPicker: () async => PickedFile(_fakeMp4(3), 'short.MOV', path: '/tmp/short.MOV'),
+      autoTrimmer: (file) async => throw StateError('잘리면 안 됨'),
+      trimmer: (file) async => null,
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('동영상'));
+    await tester.pumpAndSettle();
+    expect(find.text('동영상 3.0초 선택됨'), findsOneWidget);
+    expect(find.text('구간 바꾸기'), findsNothing);
+  });
+
+  testWidgets('컴퓨터에서는 카메라 버튼 없이 앨범에서만 고른다', (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(_wrap(CheckInScreen(rooms: _FakeRooms(), roomId: 'room-1', showCamera: false)));
+    await tester.pumpAndSettle();
+    expect(find.text('사진 찍기'), findsNothing);
+    expect(find.text('영상 찍기'), findsNothing);
+    expect(find.text('동영상 (5초 미만)'), findsOneWidget);
   });
 
   testWidgets('전후 인증: 전 사진과 한 줄을 먼저 올리고, 후 사진과 한 줄로 인증한다', (tester) async {
