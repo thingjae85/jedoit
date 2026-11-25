@@ -9,7 +9,7 @@ import '../utils/video.dart';
 String roomErrorMessage(Object error) {
   final text = error is PostgrestException ? error.message : error.toString();
   const messages = {
-    'already_in_room': '이미 참여 중인 방이 있어요. 한 번에 한 방만 참여할 수 있어요.',
+    'already_in_room': '참여 중인 챌린지가 너무 많아요. 한 번에 $maxOpenRooms개까지 함께할 수 있어요.',
     'invite_not_found': '초대 코드를 찾지 못했어요. 코드를 다시 확인해 주세요.',
     'invite_closed': '모집이 끝난 방이에요.',
     'room_full': '방이 가득 찼어요 (최대 4명).',
@@ -38,9 +38,13 @@ String roomErrorMessage(Object error) {
   return '잠시 후 다시 시도해 주세요.';
 }
 
+/// 한 계정이 동시에 참여할 수 있는 열린 방(모집·예약·진행 중) 수. 서버 _has_open_room()과 같은 값.
+const maxOpenRooms = 5;
+
 /// 방 생성·참가·시작·인증·이탈. 모든 규칙 계산은 서버 DB 함수가 한다.
 abstract class RoomService {
-  Future<String?> myRoomId();
+  /// 내가 들어가 있는 열린 방들, 최근에 만든 방부터.
+  Future<List<String>> myRoomIds();
   Future<RoomSummary> summary(String roomId);
   Future<List<RoomMember>> members(String roomId);
   Future<InvitePreview?> preview(String code);
@@ -90,7 +94,17 @@ class SupabaseRoomService implements RoomService {
   Map<String, dynamic> _first(dynamic rows) => (rows as List).first as Map<String, dynamic>;
 
   @override
-  Future<String?> myRoomId() async => await _db.rpc('my_room_id') as String?;
+  Future<List<String>> myRoomIds() async {
+    try {
+      final rows = await _db.rpc('my_room_ids') as List;
+      return [for (final r in rows) (r as Map<String, dynamic>)['id'] as String];
+    } on PostgrestException catch (e) {
+      // 서버에 my_room_ids가 아직 없으면 예전 함수로 방 하나만 가져온다.
+      if (e.code != 'PGRST202' && !e.message.contains('my_room_ids')) rethrow;
+      final id = await _db.rpc('my_room_id') as String?;
+      return id == null ? [] : [id];
+    }
+  }
 
   @override
   Future<RoomSummary> summary(String roomId) async =>

@@ -75,7 +75,7 @@ class _FakeRooms implements RoomService {
   Object? joinError;
 
   @override
-  Future<String?> myRoomId() async => null;
+  Future<List<String>> myRoomIds() async => [];
   @override
   Future<RoomSummary> summary(String roomId) async => current;
   @override
@@ -300,7 +300,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '참가하기'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('이미 참여 중인 방'), findsOneWidget);
+    expect(find.textContaining('한 번에 5개까지'), findsOneWidget);
   });
 
   testWidgets('모집 중인 방은 초대 QR·코드를 보여 주고 혼자면 시작할 수 없다', (tester) async {
