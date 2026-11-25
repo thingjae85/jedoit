@@ -58,10 +58,19 @@ class _FakeChat implements ChatService {
       stored.where((m) => m.id > after).toList();
 
   @override
-  Future<void> send(String roomId, String body) async => add('명재', body, isMe: true);
+  Future<void> send(String roomId, String body, {int? replyTo, CheckinRef? replyCheckin}) async =>
+      add('명재', body, isMe: true);
 
   @override
-  void Function() listen(String roomId, void Function() onNew, {void Function()? onCheckin}) => () {};
+  Future<Map<int, List<ReactionCount>>> reactions(String roomId) async => {};
+
+  @override
+  Future<bool> toggleReaction(String roomId, int messageId, MessageEmoji emoji) async => true;
+
+  @override
+  void Function() listen(String roomId, void Function() onNew,
+          {void Function()? onCheckin, void Function()? onReaction}) =>
+      () {};
 }
 
 class _FakeRooms implements RoomService {

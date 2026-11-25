@@ -48,6 +48,13 @@ class _ChatScreenState extends State<ChatScreen> {
   final _pending = <_PendingMessage>[];
   var _pendingSeq = 0;
   List<FeedItem> _feed = [];
+
+  /// 메시지 번호별 반응
+  Map<int, List<ReactionCount>> _reactions = {};
+
+  /// 지금 쓰는 글이 답장할 대상 (메시지 또는 인증)
+  _Reply? _replying;
+  final _inputFocus = FocusNode();
   final _input = TextEditingController();
   final _scroll = ScrollController();
   void Function()? _unlisten;
@@ -62,7 +69,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _fetch();
     try {
-      _unlisten = widget.chat.listen(widget.roomId, _fetch, onCheckin: _fetchFeed);
+      _unlisten = widget.chat.listen(widget.roomId, _fetch, onCheckin: _fetchFeed, onReaction: _fetchReactions);
     } catch (_) {
       // 실시간 연결이 안 되면 주기 확인만으로 받는다.
     }
@@ -71,10 +78,95 @@ class _ChatScreenState extends State<ChatScreen> {
       _timer = Timer.periodic(every, (_) {
         _fetch();
         _fetchFeed();
+        _fetchReactions();
       });
     }
     _fetchFeed();
+    _fetchReactions();
   }
+
+  /// 메시지 반응. 못 불러와도 대화는 그대로 쓸 수 있다.
+  Future<void> _fetchReactions() async {
+    try {
+      final r = await widget.chat.reactions(widget.roomId);
+      if (mounted) setState(() => _reactions = r);
+    } catch (_) {}
+  }
+
+  /// 반응을 먼저 화면에 바꿔 두고 서버에 보낸다. 실패하면 되돌린다.
+  Future<void> _toggleMessageReaction(ChatMessage m, MessageEmoji e) async {
+    final before = _reactions[m.id] ?? const <ReactionCount>[];
+    final had = before.any((r) => r.emoji == e && r.mine);
+    final next = <ReactionCount>[
+      for (final r in before)
+        if (r.emoji != e) r else if (!(had && r.count <= 1)) ReactionCount(e, r.count + (had ? -1 : 1), mine: !had),
+      if (!had && !before.any((r) => r.emoji == e)) ReactionCount(e, 1, mine: true),
+    ]..sort((a, b) => a.emoji.index.compareTo(b.emoji.index));
+    setState(() => _reactions = {..._reactions, m.id: next});
+    try {
+      await widget.chat.toggleReaction(widget.roomId, m.id, e);
+    } catch (err) {
+      if (!mounted) return;
+      setState(() => _reactions = {..._reactions, m.id: before});
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(chatErrorMessage(err))));
+    }
+  }
+
+  void _startReply(_Reply r) {
+    setState(() => _replying = r);
+    _inputFocus.requestFocus();
+  }
+
+  /// 메시지를 길게 누르면: 반응 고르기와 답장
+  void _openMessageActions(ChatMessage m) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: JdColors.paper,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  for (final e in MessageEmoji.values)
+                    IconButton(
+                      key: Key('react-${m.id}-${e.serverName}'),
+                      iconSize: 28,
+                      style: IconButton.styleFrom(
+                        backgroundColor: (_reactions[m.id] ?? const []).any((r) => r.emoji == e && r.mine)
+                            ? JdColors.togetherChip
+                            : null,
+                      ),
+                      onPressed: () {
+                        Navigator.of(sheet).pop();
+                        _toggleMessageReaction(m, e);
+                      },
+                      icon: Text(e.emoji, style: const TextStyle(fontSize: 26)),
+                    ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.reply_rounded),
+              title: const Text('답장'),
+              onTap: () {
+                Navigator.of(sheet).pop();
+                _startReply(_Reply.message(m));
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 이 인증에 달린 댓글 (인증에 답장한 메시지)
+  List<ChatMessage> _commentsOf(FeedItem item) =>
+      [for (final m in _messages) if (m.replyCheckin?.key == item.key) m];
 
   /// 참가자 인증 목록. 못 불러와도 대화는 그대로 쓸 수 있다.
   Future<void> _fetchFeed() async {
@@ -120,15 +212,42 @@ class _ChatScreenState extends State<ChatScreen> {
           return SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: FeedCard(
-                item: current,
-                avatarIndex: _avatarIndexOf(current.nickname, current.nicknameNo),
-                onReact: (r) async {
-                  final f = _react(current, r);
-                  setSheet(() {});
-                  await f;
-                  if (sheet.mounted) setSheet(() {});
-                },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FeedCard(
+                    item: current,
+                    avatarIndex: _avatarIndexOf(current.nickname, current.nicknameNo),
+                    onReact: (r) async {
+                      final f = _react(current, r);
+                      setSheet(() {});
+                      await f;
+                      if (sheet.mounted) setSheet(() {});
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  for (final c in _commentsOf(current))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text.rich(
+                        TextSpan(children: [
+                          TextSpan(
+                              text: '${c.isMe ? '나' : c.displayName}  ',
+                              style: const TextStyle(fontWeight: FontWeight.w700, color: JdColors.subtle)),
+                          TextSpan(text: c.body),
+                        ]),
+                        style: const TextStyle(fontSize: 14, height: 1.35, color: JdColors.ink),
+                      ),
+                    ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(sheet).pop();
+                      _startReply(_Reply.checkin(current));
+                    },
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text('댓글 달기'),
+                  ),
+                ],
               ),
             ),
           );
@@ -142,6 +261,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _timer?.cancel();
     _unlisten?.call();
     _input.dispose();
+    _inputFocus.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -202,20 +322,86 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _input.text.trim();
     if (text.isEmpty) return;
     final me = widget.members.where((m) => m.isMe).firstOrNull;
+    final reply = _replying;
     final pending = _PendingMessage(++_pendingSeq, text, DateTime.now(),
-        nickname: me?.nickname ?? '', nicknameNo: me?.nicknameNo ?? 1, displayName: me?.displayName ?? '');
+        nickname: me?.nickname ?? '',
+        nicknameNo: me?.nicknameNo ?? 1,
+        displayName: me?.displayName ?? '',
+        reply: reply);
     _input.clear();
-    setState(() => _pending.add(pending));
+    setState(() {
+      _pending.add(pending);
+      _replying = null;
+    });
     _toBottom();
     try {
-      await widget.chat.send(widget.roomId, text);
+      await widget.chat.send(widget.roomId, text,
+          replyTo: reply?.message?.id, replyCheckin: reply?.checkin == null ? null : _refOf(reply!.checkin!));
       await _fetch();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _pending.remove(pending));
+      setState(() {
+        _pending.remove(pending);
+        _replying ??= reply;
+      });
       if (_input.text.isEmpty) _input.text = text;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(chatErrorMessage(e))));
     }
+  }
+
+  CheckinRef _refOf(FeedItem f) => CheckinRef(nickname: f.nickname, nicknameNo: f.nicknameNo, date: f.date);
+
+  /// 답장 말풍선 위에 붙는 인용 한 줄
+  Widget? _quoteFor(_Entry e) {
+    final m = e.message;
+    final reply = e.pending?.reply;
+    final replyTo = m?.replyTo ?? reply?.message?.id;
+    final checkinKey = m?.replyCheckin?.key ?? reply?.checkin?.key;
+    if (replyTo != null) {
+      final target = _messages.where((x) => x.id == replyTo).firstOrNull ?? reply?.message;
+      return _Quote(
+        title: target == null ? '답장' : '${target.isMe ? '나' : target.displayName}에게 답장',
+        text: target?.body ?? '이전 메시지',
+      );
+    }
+    if (checkinKey != null) {
+      final target = _feed.where((f) => f.key == checkinKey).firstOrNull ?? reply?.checkin;
+      final who = m?.replyCheckin?.nickname ?? target?.displayName ?? '';
+      final note = target?.note ?? '';
+      return _Quote(
+        title: target?.isMe == true ? '내 인증에 댓글' : '$who님 인증에 댓글',
+        text: note.isEmpty ? '인증' : note,
+        icon: Icons.check_circle,
+        onTap: target == null ? null : () => _openCheckin(target),
+      );
+    }
+    return null;
+  }
+
+  Widget? _reactionRow(ChatMessage m) {
+    final list = _reactions[m.id];
+    if (list == null || list.isEmpty) return null;
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      children: [
+        for (final r in list)
+          InkWell(
+            key: Key('reaction-chip-${m.id}-${r.emoji.serverName}'),
+            borderRadius: BorderRadius.circular(999),
+            onTap: () => _toggleMessageReaction(m, r.emoji),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: r.mine ? JdColors.togetherChip : Colors.white,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: r.mine ? JdColors.together : JdColors.line),
+              ),
+              child: Text('${r.emoji.emoji} ${r.count}', style: const TextStyle(fontSize: 12, color: JdColors.ink)),
+            ),
+          ),
+      ],
+    );
   }
 
   int _avatarIndexOf(String nickname, int nicknameNo) {
@@ -329,9 +515,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   ? _CheckinBubble(
                       key: ValueKey('chat-checkin-${checkin.key}'),
                       item: checkin,
+                      comments: _commentsOf(checkin).length,
                       onTap: () => _openCheckin(checkin),
+                      onLongPress: () => _startReply(_Reply.checkin(checkin)),
                     )
-                  : _TextBubble(text: m.body!, isMe: m.isMe, sending: m.pending != null),
+                  : _messageBubble(m),
             ),
           ],
         );
@@ -339,7 +527,73 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _messageBubble(_Entry e) {
+    final message = e.message;
+    final reactions = message == null ? null : _reactionRow(message);
+    final bubble = GestureDetector(
+      onLongPress: message == null ? null : () => _openMessageActions(message),
+      child: _TextBubble(text: e.body!, isMe: e.isMe, sending: e.pending != null, quote: _quoteFor(e)),
+    );
+    if (reactions == null) return bubble;
+    return Column(
+      crossAxisAlignment: e.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [bubble, const SizedBox(height: 4), reactions],
+    );
+  }
+
+  Widget _replyBanner(_Reply r) {
+    final m = r.message;
+    final c = r.checkin;
+    final title = m != null
+        ? '${m.isMe ? '나' : m.displayName}에게 답장'
+        : (c!.isMe ? '내 인증에 댓글' : '${c.displayName}님 인증에 댓글');
+    final text = m?.body ?? ((c?.note ?? '').isEmpty ? '인증' : c!.note!);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 4, 6),
+      decoration: const BoxDecoration(
+        color: JdColors.paper,
+        border: Border(top: BorderSide(color: JdColors.line)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.reply_rounded, size: 18, color: JdColors.together),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
+                Text(text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: '답장 취소',
+            onPressed: () => setState(() => _replying = null),
+            icon: const Icon(Icons.close, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _inputBar() {
+    final reply = _replying;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (reply != null) _replyBanner(reply),
+        _inputRow(),
+      ],
+    );
+  }
+
+  Widget _inputRow() {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       decoration: const BoxDecoration(
@@ -352,6 +606,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: TextField(
               controller: _input,
+              focusNode: _inputFocus,
               minLines: 1,
               maxLines: 4,
               maxLength: 500,
@@ -423,7 +678,7 @@ class _DayDivider extends StatelessWidget {
 /// 보내는 중인 내 메시지.
 class _PendingMessage {
   _PendingMessage(this.seq, this.body, this.at,
-      {required this.nickname, required this.nicknameNo, required this.displayName});
+      {required this.nickname, required this.nicknameNo, required this.displayName, this.reply});
   final int seq;
   final String body;
   final DateTime at;
@@ -432,6 +687,15 @@ class _PendingMessage {
   final String nickname;
   final int nicknameNo;
   final String displayName;
+  final _Reply? reply;
+}
+
+/// 답장 대상: 메시지 하나 또는 인증 하나.
+class _Reply {
+  _Reply.message(ChatMessage this.message) : checkin = null;
+  _Reply.checkin(FeedItem this.checkin) : message = null;
+  final ChatMessage? message;
+  final FeedItem? checkin;
 }
 
 /// 단톡방 한 줄: 메시지, 인증, 또는 보내는 중인 내 메시지.
@@ -531,10 +795,13 @@ class _Row extends StatelessWidget {
 }
 
 class _TextBubble extends StatelessWidget {
-  const _TextBubble({required this.text, required this.isMe, this.sending = false});
+  const _TextBubble({required this.text, required this.isMe, this.sending = false, this.quote});
 
   final String text;
   final bool isMe;
+
+  /// 답장이면 말풍선 위쪽에 원래 메시지를 한 줄로 보여 준다.
+  final Widget? quote;
 
   /// 아직 서버에 저장되기 전이면 흐리게 보여 준다.
   final bool sending;
@@ -549,18 +816,78 @@ class _TextBubble extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: isMe ? null : Border.all(color: JdColors.line),
       ),
-      child: Text(text, style: const TextStyle(fontSize: 15, height: 1.35, color: JdColors.ink)),
+      child: quote == null
+          ? Text(text, style: const TextStyle(fontSize: 15, height: 1.35, color: JdColors.ink))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                quote!,
+                const SizedBox(height: 6),
+                Text(text, style: const TextStyle(fontSize: 15, height: 1.35, color: JdColors.ink)),
+              ],
+            ),
     );
     return sending ? Opacity(opacity: 0.55, child: bubble) : bubble;
   }
 }
 
+/// 답장 말풍선 안의 인용: 누구에게 답장했는지와 원래 글 한 줄.
+class _Quote extends StatelessWidget {
+  const _Quote({required this.title, required this.text, this.icon = Icons.reply_rounded, this.onTap});
+
+  final String title;
+  final String text;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.only(left: 8),
+        decoration: const BoxDecoration(border: Border(left: BorderSide(color: JdColors.together, width: 2))),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 13, color: JdColors.together),
+                const SizedBox(width: 3),
+                Flexible(
+                  child: Text(title,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
+                ),
+              ],
+            ),
+            Text(text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: JdColors.subtle)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// "인증했어요" 알림 카드. 사진(또는 동영상 표시)·한 줄·응원 수를 작게 보여 주고, 누르면 크게 연다.
 class _CheckinBubble extends StatelessWidget {
-  const _CheckinBubble({super.key, required this.item, required this.onTap});
+  const _CheckinBubble(
+      {super.key, required this.item, required this.onTap, this.onLongPress, this.comments = 0});
 
   final FeedItem item;
   final VoidCallback onTap;
+
+  /// 길게 누르면 바로 댓글 쓰기
+  final VoidCallback? onLongPress;
+
+  /// 이 인증에 달린 댓글 수
+  final int comments;
 
   @override
   Widget build(BuildContext context) {
@@ -579,6 +906,7 @@ class _CheckinBubble extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: SizedBox(
           width: width.clamp(200, 320).toDouble(),
           child: Column(
@@ -634,6 +962,10 @@ class _CheckinBubble extends StatelessWidget {
                   children: [
                     if (reactions.isNotEmpty)
                       Text(reactions, style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+                    if (comments > 0) ...[
+                      if (reactions.isNotEmpty) const SizedBox(width: 8),
+                      Text('💬 $comments', style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+                    ],
                     const Spacer(),
                     Text(item.isMe ? '눌러서 보기' : '눌러서 응원하기',
                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JdColors.together)),
