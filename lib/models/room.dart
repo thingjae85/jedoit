@@ -81,6 +81,7 @@ class RoomSummary {
     this.kind = ChallengeKind.tidy,
     this.title = '책상 한 구역 정리',
     this.days = 3,
+    this.captureOnly = false,
   });
 
   final String id;
@@ -115,6 +116,9 @@ class RoomSummary {
   final ChallengeKind kind;
   final String title;
   final int days;
+
+  /// 휴대폰에서는 카메라로 바로 찍은 사진·영상만 받는 방
+  final bool captureOnly;
 
   /// '5일 책 10쪽 읽기' 같은 짧은 이름
   String get challengeName => '$days일 $title';
@@ -154,6 +158,7 @@ class RoomSummary {
       kind: ChallengeKind.fromServer(j['category'] as String?),
       title: (j['title'] as String?) ?? '책상 한 구역 정리',
       days: (j['days'] as int?) ?? 3,
+      captureOnly: (j['capture_only'] as bool?) ?? false,
     );
   }
 }

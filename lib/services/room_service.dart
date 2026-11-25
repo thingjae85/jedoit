@@ -50,6 +50,7 @@ abstract class RoomService {
     ChallengeKind kind = ChallengeKind.tidy,
     String title = '책상 한 구역 정리',
     int days = 3,
+    bool captureOnly = false,
   });
   Future<String> join(String code, String nickname);
   /// 시작 확정. [tomorrow]면 내일 0시(한국 시간)에 시작하고, 아니면 오늘이 1일차다.
@@ -115,6 +116,7 @@ class SupabaseRoomService implements RoomService {
     ChallengeKind kind = ChallengeKind.tidy,
     String title = '책상 한 구역 정리',
     int days = 3,
+    bool captureOnly = false,
   }) async {
     final row = await _db.rpc('create_room', params: {
       'nick': nickname,
@@ -122,6 +124,8 @@ class SupabaseRoomService implements RoomService {
       'category': kind.serverName,
       'title': title,
       'days': days,
+      // 서버에 이 설정이 없던 때와도 맞도록 켰을 때만 보낸다.
+      if (captureOnly) 'capture_only': true,
     });
     return (row as Map<String, dynamic>)['id'] as String;
   }

@@ -313,6 +313,7 @@ class _RoomScreenState extends State<RoomScreen> {
           mode: _summary?.checkinMode ?? CheckinMode.result,
           kind: _summary?.kind ?? ChallengeKind.tidy,
           title: _summary?.title ?? '책상 한 구역 정리',
+          captureOnly: _summary?.captureOnly ?? false,
         ),
       ),
     );
@@ -424,7 +425,10 @@ class _RoomScreenState extends State<RoomScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(color: JdColors.togetherChip, borderRadius: BorderRadius.circular(8)),
-                child: Text(s.checkinMode.label,
+                child: Text(
+                    s.captureOnly && s.checkinMode != CheckinMode.light
+                        ? '${s.checkinMode.label} · 바로 찍기'
+                        : s.checkinMode.label,
                     style: const TextStyle(fontSize: 12, color: JdColors.togetherText, fontWeight: FontWeight.w700)),
               ),
             ],

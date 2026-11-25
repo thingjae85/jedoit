@@ -43,8 +43,7 @@ Future<PickedFile?> _recordVideo() => _pickVideo(source: ImageSource.camera);
 
 /// 휴대폰(앱이나 휴대폰 브라우저)에서만 카메라로 바로 찍는 버튼을 보여 준다.
 /// 컴퓨터 브라우저는 카메라 대신 파일 고르기가 열리므로 앨범 버튼만 둔다.
-bool get _onPhone =>
-    defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android;
+bool get _onPhone => defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android;
 
 const _noteMax = 100;
 
@@ -65,6 +64,7 @@ class CheckInScreen extends StatefulWidget {
     this.camera,
     this.videoCamera,
     this.showCamera,
+    this.captureOnly = false,
   });
 
   final RoomService rooms;
@@ -85,6 +85,9 @@ class CheckInScreen extends StatefulWidget {
 
   /// 카메라 버튼을 보일지. null이면 휴대폰에서만 보인다.
   final bool? showCamera;
+
+  /// 방 설정 "바로 찍은 것만 받기". 카메라를 쓸 수 있는 휴대폰에서는 앨범 버튼을 숨긴다.
+  final bool captureOnly;
 
   @override
   State<CheckInScreen> createState() => _CheckInScreenState();
@@ -134,6 +137,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   }
 
   bool get _camera => widget.showCamera ?? _onPhone;
+  bool get _album => !(_camera && widget.captureOnly);
 
   Future<void> _choosePhoto({bool before = false, bool camera = false}) async {
     setState(() => _error = null);
@@ -224,9 +228,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     final title = switch (_mode) {
       CheckinMode.light => '오늘 했어요',
       CheckinMode.result => _tidy ? '오늘 정리 인증' : '오늘 인증',
-      CheckinMode.beforeAfter => _tidy
-          ? (_beforeStep ? '정리 전 사진' : '정리 후 사진')
-          : (_beforeStep ? '시작 전 사진' : '다 한 뒤 사진'),
+      CheckinMode.beforeAfter => _tidy ? (_beforeStep ? '정리 전 사진' : '정리 후 사진') : (_beforeStep ? '시작 전 사진' : '다 한 뒤 사진'),
     };
     return Scaffold(
       appBar: AppBar(title: Text(title)),
@@ -299,8 +301,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       );
 
   List<Widget> _light() => [
-        const Text('사진 없이 오늘 한 일을 한 줄로 남겨요. 방 친구들 피드에 바로 보여요.',
-            style: TextStyle(fontSize: 15, color: JdColors.subtle)),
+        const Text('사진 없이 오늘 한 일을 한 줄로 남겨요. 방 친구들 피드에 바로 보여요.', style: TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 16),
         _noteField(_note, '오늘의 한 줄', hint: _tidy ? '예: 책상 왼쪽 서랍 정리 끝!' : '예: 오늘은 조금 더 했어요!'),
         const SizedBox(height: 8),
@@ -308,8 +309,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       ];
 
   List<Widget> _result() => [
-        const Text('다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요.',
-            style: TextStyle(fontSize: 15, color: JdColors.subtle)),
+        const Text('다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요.', style: TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 12),
         if (_photo != null) _photoPreview(_photo!),
         if (_video != null)
@@ -362,25 +362,27 @@ class _CheckInScreenState extends State<CheckInScreen> {
           ),
           const SizedBox(height: 8),
         ],
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : () => _choosePhoto(),
-                icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('사진'),
+        if (!_album) _captureOnlyNote(),
+        if (_album)
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : () => _choosePhoto(),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('사진'),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : _chooseVideo,
-                icon: const Icon(Icons.video_library_outlined),
-                label: const Text('동영상 (5초 미만)'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _chooseVideo,
+                  icon: const Icon(Icons.video_library_outlined),
+                  label: const Text('동영상 (5초 미만)'),
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         const SizedBox(height: 12),
         _noteField(_note, '한 줄 (선택)', hint: '어땠는지 한 줄 남겨 보세요'),
         _notice(),
@@ -389,7 +391,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
       ];
 
   List<Widget> _before() => [
-        Text(_tidy ? '정리를 시작하기 전에 지금 모습을 찍어 두세요. 끝나면 후 사진을 올려 나란히 보여 줘요.' : '시작하기 전에 한 장 찍어 두세요. 다 하면 후 사진을 올려 나란히 보여 줘요.',
+        Text(
+            _tidy
+                ? '정리를 시작하기 전에 지금 모습을 찍어 두세요. 끝나면 후 사진을 올려 나란히 보여 줘요.'
+                : '시작하기 전에 한 장 찍어 두세요. 다 하면 후 사진을 올려 나란히 보여 줘요.',
             style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 12),
         if (_beforePhoto != null) _photoPreview(_beforePhoto!, label: '전'),
@@ -412,7 +417,8 @@ class _CheckInScreenState extends State<CheckInScreen> {
   List<Widget> _after() {
     final before = _savedBefore!;
     return [
-      Text(_tidy ? '정리를 마쳤으면 같은 자리를 다시 찍어 주세요.' : '다 했으면 한 장 더 찍어 주세요.', style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
+      Text(_tidy ? '정리를 마쳤으면 같은 자리를 다시 찍어 주세요.' : '다 했으면 한 장 더 찍어 주세요.',
+          style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
       const SizedBox(height: 12),
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,6 +452,19 @@ class _CheckInScreenState extends State<CheckInScreen> {
       label: Text(pickLabel),
     );
     if (!_camera) return album;
+    if (!_album) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FilledButton.tonalIcon(
+            onPressed: _busy ? null : take,
+            icon: const Icon(Icons.photo_camera_outlined),
+            label: const Text('사진 찍기'),
+          ),
+          _captureOnlyNote(),
+        ],
+      );
+    }
     return Row(
       children: [
         Expanded(
@@ -460,6 +479,12 @@ class _CheckInScreenState extends State<CheckInScreen> {
       ],
     );
   }
+
+  Widget _captureOnlyNote() => const Padding(
+        padding: EdgeInsets.only(top: 2, bottom: 4),
+        child: Text('이 방은 그 자리에서 바로 찍은 사진·영상만 받아요.',
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: JdColors.subtle)),
+      );
 
   Widget _halfShot(String label, String? note, {Uint8List? memory, String? url}) {
     final Widget image;

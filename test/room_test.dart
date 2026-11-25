@@ -91,7 +91,9 @@ class _FakeRooms implements RoomService {
     ChallengeKind kind = ChallengeKind.tidy,
     String title = '책상 한 구역 정리',
     int days = 3,
+    bool captureOnly = false,
   }) async {
+    if (captureOnly) created.add('captureOnly');
     created.add(kind == ChallengeKind.tidy && days == 3
         ? '$nickname:${mode.serverName}'
         : '$nickname:${mode.serverName}:${kind.serverName}:$title:$days');
@@ -507,6 +509,36 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '인증 저장'));
     await tester.pumpAndSettle();
     expect(rooms.uploaded, isNotNull);
+  });
+
+  testWidgets('바로 찍은 것만 받는 방: 휴대폰에서는 앨범 버튼이 없고, 컴퓨터에서는 그대로 고른다', (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(_wrap(CheckInScreen(rooms: _FakeRooms(), roomId: 'room-1', showCamera: true, captureOnly: true)));
+    await tester.pumpAndSettle();
+    expect(find.text('사진 찍기'), findsOneWidget);
+    expect(find.text('동영상 (5초 미만)'), findsNothing);
+    expect(find.textContaining('바로 찍은 사진·영상만'), findsOneWidget);
+
+    await tester.pumpWidget(_wrap(CheckInScreen(
+        key: const ValueKey('pc'), rooms: _FakeRooms(), roomId: 'room-1', showCamera: false, captureOnly: true)));
+    await tester.pumpAndSettle();
+    expect(find.text('동영상 (5초 미만)'), findsOneWidget);
+  });
+
+  testWidgets('방을 만들 때 "바로 찍은 것만 받기"를 켤 수 있다', (tester) async {
+    _tall(tester);
+    final rooms = _FakeRooms();
+    await tester.pumpWidget(_wrap(RoomEntryScreen(rooms: rooms)));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('captureOnly')));
+    await tester.tap(find.byKey(const Key('captureOnly')));
+    await tester.pump();
+    await tester.enterText(find.widgetWithText(TextField, '이 방에서 쓸 닉네임'), '명재');
+    await tester.pump();
+    await tester.ensureVisible(find.widgetWithText(FilledButton, '방 만들기'));
+    await tester.tap(find.widgetWithText(FilledButton, '방 만들기'));
+    await tester.pumpAndSettle();
+    expect(rooms.created, ['captureOnly', '명재:result']);
   });
 
   testWidgets('컴퓨터에서는 카메라 버튼 없이 앨범에서만 고른다', (tester) async {
