@@ -19,9 +19,9 @@ typedef FilePicker = Future<PickedFile?> Function();
 
 /// 휴대폰 원본 사진(수천 px, 수 MB)을 그대로 받으면 앱 안에서 줄이는 데 몇 초씩 멈춘다.
 /// 고를 때 기기(브라우저)가 먼저 긴 변 [maxLongSide]px로 줄여 주게 한다. 위치정보 제거는 그 뒤 [prepareCheckinPhoto]가 한다.
-Future<PickedFile?> _pickImage() async {
+Future<PickedFile?> _pickImage({ImageSource source = ImageSource.gallery}) async {
   final f = await ImagePicker().pickImage(
-    source: ImageSource.gallery,
+    source: source,
     maxWidth: maxLongSide.toDouble(),
     maxHeight: maxLongSide.toDouble(),
     imageQuality: 90,
@@ -29,10 +29,22 @@ Future<PickedFile?> _pickImage() async {
   return f == null ? null : PickedFile(await f.readAsBytes(), f.name);
 }
 
-Future<PickedFile?> _pickVideo() async {
-  final f = await ImagePicker().pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 5));
+Future<PickedFile?> _pickVideo({ImageSource source = ImageSource.gallery}) async {
+  // 카메라로 찍을 때는 5초 미만 규칙에 걸리지 않도록 4.8초에서 녹화를 멈춘다.
+  final f = await ImagePicker().pickVideo(
+    source: source,
+    maxDuration: source == ImageSource.camera ? const Duration(milliseconds: 4800) : const Duration(seconds: 5),
+  );
   return f == null ? null : PickedFile(await f.readAsBytes(), f.name);
 }
+
+Future<PickedFile?> _takePhoto() => _pickImage(source: ImageSource.camera);
+Future<PickedFile?> _recordVideo() => _pickVideo(source: ImageSource.camera);
+
+/// 휴대폰(앱이나 휴대폰 브라우저)에서만 카메라로 바로 찍는 버튼을 보여 준다.
+/// 컴퓨터 브라우저는 카메라 대신 파일 고르기가 열리므로 앨범 버튼만 둔다.
+bool get _onPhone =>
+    defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android;
 
 const _noteMax = 100;
 
@@ -50,6 +62,9 @@ class CheckInScreen extends StatefulWidget {
     this.title = '책상 한 구역 정리',
     this.picker,
     this.videoPicker,
+    this.camera,
+    this.videoCamera,
+    this.showCamera,
   });
 
   final RoomService rooms;
@@ -63,6 +78,13 @@ class CheckInScreen extends StatefulWidget {
   /// 테스트에서 사진·동영상 고르기를 바꿔 끼운다.
   final FilePicker? picker;
   final FilePicker? videoPicker;
+
+  /// 테스트에서 카메라 촬영을 바꿔 끼운다.
+  final FilePicker? camera;
+  final FilePicker? videoCamera;
+
+  /// 카메라 버튼을 보일지. null이면 휴대폰에서만 보인다.
+  final bool? showCamera;
 
   @override
   State<CheckInScreen> createState() => _CheckInScreenState();
@@ -111,10 +133,12 @@ class _CheckInScreenState extends State<CheckInScreen> {
     }
   }
 
-  Future<void> _choosePhoto({bool before = false}) async {
+  bool get _camera => widget.showCamera ?? _onPhone;
+
+  Future<void> _choosePhoto({bool before = false, bool camera = false}) async {
     setState(() => _error = null);
     try {
-      final file = await (widget.picker ?? _pickImage)();
+      final file = await (camera ? (widget.camera ?? _takePhoto) : (widget.picker ?? _pickImage))();
       if (file == null) return;
       final prepared = prepareCheckinPhoto(file.bytes);
       if (!mounted) return;
@@ -133,10 +157,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
     }
   }
 
-  Future<void> _chooseVideo() async {
+  Future<void> _chooseVideo({bool camera = false}) async {
     setState(() => _error = null);
     try {
-      final file = await (widget.videoPicker ?? _pickVideo)();
+      final file = await (camera ? (widget.videoCamera ?? _recordVideo) : (widget.videoPicker ?? _pickVideo))();
       if (file == null) return;
       final video = prepareCheckinVideo(file.bytes, file.name);
       if (!mounted) return;
@@ -316,6 +340,28 @@ class _CheckInScreenState extends State<CheckInScreen> {
           ),
           const SizedBox(height: 12),
         ],
+        if (_camera) ...[
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: _busy ? null : () => _choosePhoto(camera: true),
+                  icon: const Icon(Icons.photo_camera_outlined),
+                  label: const Text('사진 찍기'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: _busy ? null : () => _chooseVideo(camera: true),
+                  icon: const Icon(Icons.videocam_outlined),
+                  label: const Text('영상 찍기'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
         Row(
           children: [
             Expanded(
@@ -329,7 +375,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _busy ? null : _chooseVideo,
-                icon: const Icon(Icons.videocam_outlined),
+                icon: const Icon(Icons.video_library_outlined),
                 label: const Text('동영상 (5초 미만)'),
               ),
             ),
@@ -347,10 +393,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
             style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 12),
         if (_beforePhoto != null) _photoPreview(_beforePhoto!, label: '전'),
-        OutlinedButton.icon(
-          onPressed: _busy ? null : () => _choosePhoto(before: true),
-          icon: const Icon(Icons.photo_library_outlined),
-          label: Text(_beforePhoto == null ? '전 사진 고르기' : '다른 사진 고르기'),
+        _shotButtons(
+          pick: () => _choosePhoto(before: true),
+          take: () => _choosePhoto(before: true, camera: true),
+          pickLabel: _beforePhoto == null ? '전 사진 고르기' : '다른 사진 고르기',
         ),
         const SizedBox(height: 12),
         _noteField(_beforeNote, '전 한 줄 (선택)', hint: '예: 서랍이 터지기 직전'),
@@ -377,10 +423,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
         ],
       ),
       const SizedBox(height: 12),
-      OutlinedButton.icon(
-        onPressed: _busy ? null : () => _choosePhoto(),
-        icon: const Icon(Icons.photo_library_outlined),
-        label: Text(_photo == null ? '후 사진 고르기' : '다른 사진 고르기'),
+      _shotButtons(
+        pick: () => _choosePhoto(),
+        take: () => _choosePhoto(camera: true),
+        pickLabel: _photo == null ? '후 사진 고르기' : '다른 사진 고르기',
       ),
       TextButton(
         onPressed: _busy ? null : () => setState(() => _savedBefore = null),
@@ -390,6 +436,29 @@ class _CheckInScreenState extends State<CheckInScreen> {
       _doneCheck(),
       _submitButton('인증 저장'),
     ];
+  }
+
+  /// 전후 사진 버튼: 휴대폰이면 "찍기"를 앞에, 앨범 고르기를 옆에 둔다.
+  Widget _shotButtons({required VoidCallback pick, required VoidCallback take, required String pickLabel}) {
+    final album = OutlinedButton.icon(
+      onPressed: _busy ? null : pick,
+      icon: const Icon(Icons.photo_library_outlined),
+      label: Text(pickLabel),
+    );
+    if (!_camera) return album;
+    return Row(
+      children: [
+        Expanded(
+          child: FilledButton.tonalIcon(
+            onPressed: _busy ? null : take,
+            icon: const Icon(Icons.photo_camera_outlined),
+            label: const Text('사진 찍기'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: album),
+      ],
+    );
   }
 
   Widget _halfShot(String label, String? note, {Uint8List? memory, String? url}) {
