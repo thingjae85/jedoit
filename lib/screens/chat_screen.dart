@@ -42,6 +42,11 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _messages = <ChatMessage>[];
+
+  /// 보내는 중인 내 메시지. 서버 답을 기다리지 않고 바로 말풍선으로 보여 주고,
+  /// 서버에서 같은 내 메시지가 내려오면 지운다.
+  final _pending = <_PendingMessage>[];
+  var _pendingSeq = 0;
   List<FeedItem> _feed = [];
   final _input = TextEditingController();
   final _scroll = ScrollController();
@@ -49,7 +54,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _timer;
   bool _loading = true;
   bool _loadFailed = false;
-  bool _sending = false;
   bool _fetching = false;
   bool _fetchAgain = false;
 
@@ -158,8 +162,14 @@ class _ChatScreenState extends State<ChatScreen> {
         if (!mounted) return;
         final atBottom = !_scroll.hasClients || _scroll.position.pixels <= 80;
         final known = {for (final m in _messages) m.id};
+        final added = fresh.where((m) => !known.contains(m.id)).toList();
         setState(() {
-          _messages.addAll(fresh.where((m) => !known.contains(m.id)));
+          _messages.addAll(added);
+          for (final m in added) {
+            if (!m.isMe) continue;
+            final i = _pending.indexWhere((p) => p.body == m.body);
+            if (i >= 0) _pending.removeAt(i);
+          }
           _messages.sort((a, b) => a.id.compareTo(b.id));
           _loading = false;
           _loadFailed = false;
@@ -186,19 +196,25 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  /// 입력창을 바로 비우고 말풍선을 먼저 띄운 뒤, 서버 저장은 뒤에서 기다린다.
+  /// 실패하면 말풍선을 거두고 글을 입력창에 되돌려 놓는다.
   Future<void> _send() async {
     final text = _input.text.trim();
-    if (text.isEmpty || _sending) return;
-    setState(() => _sending = true);
+    if (text.isEmpty) return;
+    final me = widget.members.where((m) => m.isMe).firstOrNull;
+    final pending = _PendingMessage(++_pendingSeq, text, DateTime.now(),
+        nickname: me?.nickname ?? '', nicknameNo: me?.nicknameNo ?? 1, displayName: me?.displayName ?? '');
+    _input.clear();
+    setState(() => _pending.add(pending));
+    _toBottom();
     try {
       await widget.chat.send(widget.roomId, text);
-      _input.clear();
       await _fetch();
-      _toBottom();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(chatErrorMessage(e))));
-    } finally {
-      if (mounted) setState(() => _sending = false);
+      if (!mounted) return;
+      setState(() => _pending.remove(pending));
+      if (_input.text.isEmpty) _input.text = text;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(chatErrorMessage(e))));
     }
   }
 
@@ -207,7 +223,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return i >= 0 ? i : nickname.hashCode.abs();
   }
 
-  /// 메시지와 인증을 시간순으로 섞는다.
+  /// 메시지와 인증을 시간순으로 섞는다. 보내는 중인 메시지는 늘 맨 아래.
   List<_Entry> _entries() {
     final list = [
       for (final m in _messages) _Entry.message(m),
@@ -218,7 +234,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (t != 0) return t;
       return (a.message?.id ?? 0).compareTo(b.message?.id ?? 0);
     });
-    return list;
+    return [...list, for (final p in _pending) _Entry.pending(p)];
   }
 
   @override
@@ -308,14 +324,14 @@ class _ChatScreenState extends State<ChatScreen> {
               at: m.at,
               avatarIndex: _avatarIndexOf(m.nickname, m.nicknameNo),
               showName: firstOfGroup,
-              showTime: lastOfGroup,
+              showTime: lastOfGroup && m.pending == null,
               child: checkin != null
                   ? _CheckinBubble(
                       key: ValueKey('chat-checkin-${checkin.key}'),
                       item: checkin,
                       onTap: () => _openCheckin(checkin),
                     )
-                  : _TextBubble(text: m.message!.body, isMe: m.isMe),
+                  : _TextBubble(text: m.body!, isMe: m.isMe, sending: m.pending != null),
             ),
           ],
         );
@@ -356,10 +372,8 @@ class _ChatScreenState extends State<ChatScreen> {
           IconButton.filled(
             tooltip: '보내기',
             style: IconButton.styleFrom(backgroundColor: JdColors.together),
-            onPressed: _sending ? null : _send,
-            icon: _sending
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.send_rounded, color: Colors.white),
+            onPressed: _send,
+            icon: const Icon(Icons.send_rounded, color: Colors.white),
           ),
         ],
       ),
@@ -406,19 +420,42 @@ class _DayDivider extends StatelessWidget {
   }
 }
 
-/// 단톡방 한 줄: 메시지 또는 인증.
+/// 보내는 중인 내 메시지.
+class _PendingMessage {
+  _PendingMessage(this.seq, this.body, this.at,
+      {required this.nickname, required this.nicknameNo, required this.displayName});
+  final int seq;
+  final String body;
+  final DateTime at;
+
+  /// 바로 앞 내 메시지와 한 묶음으로 보이도록 내 이름을 같이 들고 있다.
+  final String nickname;
+  final int nicknameNo;
+  final String displayName;
+}
+
+/// 단톡방 한 줄: 메시지, 인증, 또는 보내는 중인 내 메시지.
 class _Entry {
-  _Entry.message(ChatMessage this.message) : checkin = null;
-  _Entry.checkin(FeedItem this.checkin) : message = null;
+  _Entry.message(ChatMessage this.message)
+      : checkin = null,
+        pending = null;
+  _Entry.checkin(FeedItem this.checkin)
+      : message = null,
+        pending = null;
+  _Entry.pending(_PendingMessage this.pending)
+      : message = null,
+        checkin = null;
 
   final ChatMessage? message;
   final FeedItem? checkin;
+  final _PendingMessage? pending;
 
-  DateTime get at => message?.sentAt ?? checkin!.checkedAt;
-  bool get isMe => message?.isMe ?? checkin!.isMe;
-  String get nickname => message?.nickname ?? checkin!.nickname;
-  int get nicknameNo => message?.nicknameNo ?? checkin!.nicknameNo;
-  String get displayName => message?.displayName ?? checkin!.displayName;
+  DateTime get at => message?.sentAt ?? checkin?.checkedAt ?? pending!.at;
+  bool get isMe => message?.isMe ?? checkin?.isMe ?? true;
+  String get nickname => message?.nickname ?? checkin?.nickname ?? pending!.nickname;
+  int get nicknameNo => message?.nicknameNo ?? checkin?.nicknameNo ?? pending!.nicknameNo;
+  String get displayName => message?.displayName ?? checkin?.displayName ?? pending!.displayName;
+  String? get body => message?.body ?? pending?.body;
 }
 
 /// 말풍선을 내 쪽(오른쪽) 또는 친구 쪽(왼쪽, 동그라미·이름)으로 놓는다.
@@ -494,14 +531,17 @@ class _Row extends StatelessWidget {
 }
 
 class _TextBubble extends StatelessWidget {
-  const _TextBubble({required this.text, required this.isMe});
+  const _TextBubble({required this.text, required this.isMe, this.sending = false});
 
   final String text;
   final bool isMe;
 
+  /// 아직 서버에 저장되기 전이면 흐리게 보여 준다.
+  final bool sending;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final bubble = Container(
       constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.68),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
@@ -511,6 +551,7 @@ class _TextBubble extends StatelessWidget {
       ),
       child: Text(text, style: const TextStyle(fontSize: 15, height: 1.35, color: JdColors.ink)),
     );
+    return sending ? Opacity(opacity: 0.55, child: bubble) : bubble;
   }
 }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jeoduit/models/room.dart';
@@ -11,6 +13,10 @@ class _FakeChat implements ChatService {
   void Function()? onNew;
   var unlistened = false;
   var _id = 0;
+
+  /// 설정하면 send가 이 Completer가 끝날 때까지 기다린다 (느린 서버 흉내).
+  Completer<void>? gate;
+  Object? failWith;
 
   void friendSays(String text) {
     stored.add(ChatMessage(
@@ -30,6 +36,8 @@ class _FakeChat implements ChatService {
 
   @override
   Future<void> send(String roomId, String body) async {
+    await gate?.future;
+    if (failWith != null) throw failWith!;
     stored.add(ChatMessage(
       id: ++_id,
       nickname: '명재',
@@ -135,5 +143,39 @@ void main() {
     Navigator.of(tester.element(find.byType(FeedCard))).pop();
     await tester.pumpAndSettle();
     expect(find.text('👏 1  🔥 1'), findsOneWidget);
+  });
+
+  testWidgets('단톡방: 보내기를 누르면 서버 답을 기다리지 않고 바로 말풍선이 뜬다', (tester) async {
+    final chat = _FakeChat()..gate = Completer<void>();
+    await tester.pumpWidget(MaterialApp(
+      home: ChatScreen(chat: chat, roomId: 'room-1', title: '챌린지', members: members, poll: null),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '바로 보여?');
+    await tester.tap(find.byTooltip('보내기'));
+    await tester.pump();
+    expect(find.text('바로 보여?'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
+
+    chat.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('바로 보여?'), findsOneWidget);
+    expect(chat.stored.where((m) => m.body == '바로 보여?'), hasLength(1));
+  });
+
+  testWidgets('단톡방: 보내기에 실패하면 말풍선을 거두고 글을 입력창에 되돌린다', (tester) async {
+    final chat = _FakeChat()..failWith = Exception('network');
+    await tester.pumpWidget(MaterialApp(
+      home: ChatScreen(chat: chat, roomId: 'room-1', title: '챌린지', members: members, poll: null),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '안 갈 메시지');
+    await tester.tap(find.byTooltip('보내기'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('보내지 못했어요'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '안 갈 메시지');
+    expect(find.text('안 갈 메시지'), findsOneWidget); // 입력창 안의 글만 남는다
   });
 }
