@@ -550,41 +550,72 @@ void main() {
     expect(rooms.created, ['captureOnly', '명재:result']);
   });
 
-  testWidgets('자르기를 쓸 수 있으면 5초가 넘는 동영상은 구간을 잘라서 올린다', (tester) async {
+  testWidgets('자르기를 쓸 수 있으면 5초가 넘는 동영상은 앞 4.8초를 바로 잘라 쓰고, 구간을 바꿀 수 있다', (tester) async {
     _tall(tester);
     final rooms = _FakeRooms();
-    final asked = <String>[];
+    final front = <String>[];
+    final picked = <String>[];
     await tester.pumpWidget(_wrap(CheckInScreen(
       rooms: rooms,
       roomId: 'room-1',
       showCamera: false,
       videoPicker: () async => PickedFile(_fakeMp4(12), 'long.MOV', path: '/tmp/long.MOV'),
-      trimmer: (file) async {
-        asked.add(file.path!);
+      autoTrimmer: (file) async {
+        front.add(file.path!);
         return _fakeMp4(4.8);
+      },
+      trimmer: (file) async {
+        picked.add(file.path!);
+        return _fakeMp4(4.7);
       },
     )));
     await tester.pumpAndSettle();
     await tester.tap(find.text('동영상'));
     await tester.pumpAndSettle();
-    expect(asked, ['/tmp/long.MOV']);
+    expect(front, ['/tmp/long.MOV']);
+    expect(picked, isEmpty);
     expect(find.text('동영상 4.8초 선택됨'), findsOneWidget);
     expect(find.textContaining('5초 미만 동영상만'), findsNothing);
+
+    await tester.tap(find.text('구간 바꾸기'));
+    await tester.pumpAndSettle();
+    expect(picked, ['/tmp/long.MOV']);
+    expect(find.text('동영상 4.7초 선택됨'), findsOneWidget);
   });
 
-  testWidgets('자르기를 그만두면 동영상을 고르지 않은 채로 둔다', (tester) async {
+  testWidgets('구간 바꾸기를 그만두면 앞 4.8초를 그대로 쓴다', (tester) async {
     _tall(tester);
     await tester.pumpWidget(_wrap(CheckInScreen(
       rooms: _FakeRooms(),
       roomId: 'room-1',
       showCamera: false,
       videoPicker: () async => PickedFile(_fakeMp4(12), 'long.MOV', path: '/tmp/long.MOV'),
+      autoTrimmer: (file) async => _fakeMp4(4.8),
       trimmer: (file) async => null,
     )));
     await tester.pumpAndSettle();
     await tester.tap(find.text('동영상'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('선택됨'), findsNothing);
+    await tester.tap(find.text('구간 바꾸기'));
+    await tester.pumpAndSettle();
+    expect(find.text('동영상 4.8초 선택됨'), findsOneWidget);
+  });
+
+  testWidgets('짧은 동영상은 자르지 않고 구간 바꾸기도 없다', (tester) async {
+    _tall(tester);
+    await tester.pumpWidget(_wrap(CheckInScreen(
+      rooms: _FakeRooms(),
+      roomId: 'room-1',
+      showCamera: false,
+      videoPicker: () async => PickedFile(_fakeMp4(3), 'short.MOV', path: '/tmp/short.MOV'),
+      autoTrimmer: (file) async => throw StateError('잘리면 안 됨'),
+      trimmer: (file) async => null,
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('동영상'));
+    await tester.pumpAndSettle();
+    expect(find.text('동영상 3.0초 선택됨'), findsOneWidget);
+    expect(find.text('구간 바꾸기'), findsNothing);
   });
 
   testWidgets('컴퓨터에서는 카메라 버튼 없이 앨범에서만 고른다', (tester) async {

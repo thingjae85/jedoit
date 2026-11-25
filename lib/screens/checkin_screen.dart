@@ -25,6 +25,12 @@ typedef FilePicker = Future<PickedFile?> Function();
 /// 긴 동영상에서 구간을 골라 자른 MP4 바이트. 그만두면 null.
 typedef VideoTrimmer = Future<Uint8List?> Function(PickedFile file);
 
+/// 긴 동영상의 앞 4.8초를 바로 잘라 낸 MP4 바이트.
+typedef VideoAutoTrimmer = Future<Uint8List> Function(PickedFile file);
+
+Future<Uint8List> _trimFront(PickedFile file) =>
+    trimVideo(file.path!, start: 0, seconds: trimWindowSeconds);
+
 /// 휴대폰 원본 사진(수천 px, 수 MB)을 그대로 받으면 앱 안에서 줄이는 데 몇 초씩 멈춘다.
 /// 고를 때 기기(브라우저)가 먼저 긴 변 [maxLongSide]px로 줄여 주게 한다. 위치정보 제거는 그 뒤 [prepareCheckinPhoto]가 한다.
 Future<PickedFile?> _pickImage({ImageSource source = ImageSource.gallery}) async {
@@ -77,6 +83,7 @@ class CheckInScreen extends StatefulWidget {
     this.showCamera,
     this.captureOnly = false,
     this.trimmer,
+    this.autoTrimmer,
   });
 
   final RoomService rooms;
@@ -104,6 +111,9 @@ class CheckInScreen extends StatefulWidget {
   /// 긴 동영상 자르기. 테스트에서 바꿔 끼운다. null이면 아이폰 앱에서만 자르기 화면을 연다.
   final VideoTrimmer? trimmer;
 
+  /// 긴 동영상의 앞부분 자르기. 테스트에서 바꿔 끼운다.
+  final VideoAutoTrimmer? autoTrimmer;
+
   @override
   State<CheckInScreen> createState() => _CheckInScreenState();
 }
@@ -113,6 +123,9 @@ class _CheckInScreenState extends State<CheckInScreen> {
   final _beforeNote = TextEditingController();
   Uint8List? _photo;
   CheckinVideo? _video;
+
+  /// 앞부분을 잘라 낸 긴 원본 동영상. "구간 바꾸기"로 다른 부분을 고를 때 쓴다.
+  PickedFile? _longVideo;
   Uint8List? _beforePhoto;
   BeforeShot? _savedBefore;
   bool _loadingBefore = false;
@@ -182,17 +195,22 @@ class _CheckInScreenState extends State<CheckInScreen> {
       final file = await (camera ? (widget.videoCamera ?? _recordVideo) : (widget.videoPicker ?? _pickVideo))();
       if (file == null) return;
       final CheckinVideo video;
-      if (_needsTrim(file)) {
-        if (!mounted) return;
-        final trimmed = await (widget.trimmer ?? _openTrim)(file);
-        if (trimmed == null) return;
-        video = prepareCheckinVideo(trimmed, 'trim.mp4');
+      final long = _needsTrim(file);
+      if (long) {
+        // 긴 동영상은 앞 4.8초를 바로 잘라 쓴다. 다른 부분은 "구간 바꾸기"로 고른다.
+        setState(() => _busy = true);
+        try {
+          video = prepareCheckinVideo(await (widget.autoTrimmer ?? _trimFront)(file), 'trim.mp4');
+        } finally {
+          if (mounted) setState(() => _busy = false);
+        }
       } else {
         video = prepareCheckinVideo(file.bytes, file.name);
       }
       if (!mounted) return;
       setState(() {
         _video = video;
+        _longVideo = long ? file : null;
         _photo = null;
       });
     } on PhotoException catch (e) {
@@ -202,10 +220,28 @@ class _CheckInScreenState extends State<CheckInScreen> {
     }
   }
 
+  /// 앞부분을 자른 긴 동영상에서 다른 구간을 고른다.
+  Future<void> _changeRange() async {
+    final file = _longVideo;
+    if (file == null) return;
+    setState(() => _error = null);
+    try {
+      final trimmed = await (widget.trimmer ?? _openTrim)(file);
+      if (trimmed == null || !mounted) return;
+      final video = prepareCheckinVideo(trimmed, 'trim.mp4').withSound(_video?.sound ?? false);
+      setState(() => _video = video);
+    } on PhotoException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = '동영상을 자르지 못했어요. 다른 동영상을 골라 주세요.');
+    }
+  }
+
   /// 자르기를 쓸 수 있고, 동영상이 5초 이상이거나 너무 커서 아직 읽지 않았으면 자른다.
+  bool get _canTrim => canTrimVideo || widget.trimmer != null || widget.autoTrimmer != null;
+
   bool _needsTrim(PickedFile file) {
-    final canTrim = widget.trimmer != null || (canTrimVideo && file.path != null);
-    if (!canTrim) return false;
+    if (!_canTrim || file.path == null) return false;
     if (file.bytes.isEmpty) return true;
     final seconds = mp4DurationSeconds(file.bytes);
     return seconds != null && seconds >= maxVideoSeconds;
@@ -346,8 +382,8 @@ class _CheckInScreenState extends State<CheckInScreen> {
 
   List<Widget> _result() => [
         Text(
-            canTrimVideo || widget.trimmer != null
-                ? '다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요. 긴 동영상은 5초만 잘라 올릴 수 있어요.'
+            _canTrim
+                ? '다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요. 긴 동영상은 앞 4.8초만 올리고, 다른 구간으로 바꿀 수 있어요.'
                 : '다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요.',
             style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 12),
@@ -365,6 +401,22 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 const SizedBox(width: 8),
                 Text('동영상 ${_video!.seconds.toStringAsFixed(1)}초 선택됨',
                     style: const TextStyle(fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        if (_video != null && _longVideo != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text('긴 동영상이라 앞 4.8초만 올려요.', style: TextStyle(fontSize: 13, color: JdColors.subtle)),
+                ),
+                TextButton.icon(
+                  onPressed: _busy ? null : _changeRange,
+                  icon: const Icon(Icons.content_cut, size: 18),
+                  label: const Text('구간 바꾸기'),
+                ),
               ],
             ),
           ),
@@ -418,7 +470,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _busy ? null : _chooseVideo,
                   icon: const Icon(Icons.video_library_outlined),
-                  label: Text(canTrimVideo || widget.trimmer != null ? '동영상' : '동영상 (5초 미만)'),
+                  label: Text(_canTrim ? '동영상' : '동영상 (5초 미만)'),
                 ),
               ),
             ],
