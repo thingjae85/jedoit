@@ -15,6 +15,9 @@ dependencies:
   shared_preferences: ^2.3.0
   supabase_flutter: ^2.18.3
   video_player: ^2.14.1
+  # 아이폰에서 5초가 넘는 동영상의 한 구간을 자른다 (packages/video_trim).
+  video_trim:
+    path: packages/video_trim
   web: ^1.1.2
 
 dev_dependencies:

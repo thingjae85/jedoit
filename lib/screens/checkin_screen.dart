@@ -1,21 +1,29 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_trim/video_trim.dart';
 
 import '../models/room.dart';
 import '../services/room_service.dart';
 import '../theme.dart';
 import '../utils/photo.dart';
 import '../utils/video.dart';
+import 'video_trim_screen.dart';
 
 /// 고른 파일. 동영상은 이름의 확장자로 mp4·mov를 구분한다.
+/// [path]는 기기 안 파일 위치로, 아이폰에서 긴 동영상을 자를 때 쓴다.
+/// 너무 커서 아직 읽지 않은 동영상은 [bytes]가 비어 있다.
 class PickedFile {
-  const PickedFile(this.bytes, this.name);
+  const PickedFile(this.bytes, this.name, {this.path});
   final Uint8List bytes;
   final String name;
+  final String? path;
 }
 
 typedef FilePicker = Future<PickedFile?> Function();
+
+/// 긴 동영상에서 구간을 골라 자른 MP4 바이트. 그만두면 null.
+typedef VideoTrimmer = Future<Uint8List?> Function(PickedFile file);
 
 /// 휴대폰 원본 사진(수천 px, 수 MB)을 그대로 받으면 앱 안에서 줄이는 데 몇 초씩 멈춘다.
 /// 고를 때 기기(브라우저)가 먼저 긴 변 [maxLongSide]px로 줄여 주게 한다. 위치정보 제거는 그 뒤 [prepareCheckinPhoto]가 한다.
@@ -35,7 +43,10 @@ Future<PickedFile?> _pickVideo({ImageSource source = ImageSource.gallery}) async
     source: source,
     maxDuration: source == ImageSource.camera ? const Duration(milliseconds: 4800) : const Duration(seconds: 5),
   );
-  return f == null ? null : PickedFile(await f.readAsBytes(), f.name);
+  if (f == null) return null;
+  // 아이폰에서는 긴 동영상도 잘라 쓸 수 있으니, 아주 큰 파일은 통째로 읽지 않고 위치만 넘긴다.
+  if (canTrimVideo && await f.length() > maxVideoBytes) return PickedFile(Uint8List(0), f.name, path: f.path);
+  return PickedFile(await f.readAsBytes(), f.name, path: kIsWeb ? null : f.path);
 }
 
 Future<PickedFile?> _takePhoto() => _pickImage(source: ImageSource.camera);
@@ -65,6 +76,7 @@ class CheckInScreen extends StatefulWidget {
     this.videoCamera,
     this.showCamera,
     this.captureOnly = false,
+    this.trimmer,
   });
 
   final RoomService rooms;
@@ -88,6 +100,9 @@ class CheckInScreen extends StatefulWidget {
 
   /// 방 설정 "바로 찍은 것만 받기". 카메라를 쓸 수 있는 휴대폰에서는 앨범 버튼을 숨긴다.
   final bool captureOnly;
+
+  /// 긴 동영상 자르기. 테스트에서 바꿔 끼운다. null이면 아이폰 앱에서만 자르기 화면을 연다.
+  final VideoTrimmer? trimmer;
 
   @override
   State<CheckInScreen> createState() => _CheckInScreenState();
@@ -166,7 +181,15 @@ class _CheckInScreenState extends State<CheckInScreen> {
     try {
       final file = await (camera ? (widget.videoCamera ?? _recordVideo) : (widget.videoPicker ?? _pickVideo))();
       if (file == null) return;
-      final video = prepareCheckinVideo(file.bytes, file.name);
+      final CheckinVideo video;
+      if (_needsTrim(file)) {
+        if (!mounted) return;
+        final trimmed = await (widget.trimmer ?? _openTrim)(file);
+        if (trimmed == null) return;
+        video = prepareCheckinVideo(trimmed, 'trim.mp4');
+      } else {
+        video = prepareCheckinVideo(file.bytes, file.name);
+      }
       if (!mounted) return;
       setState(() {
         _video = video;
@@ -178,6 +201,19 @@ class _CheckInScreenState extends State<CheckInScreen> {
       if (mounted) setState(() => _error = '동영상을 불러오지 못했어요. 다른 동영상을 골라 주세요.');
     }
   }
+
+  /// 자르기를 쓸 수 있고, 동영상이 5초 이상이거나 너무 커서 아직 읽지 않았으면 자른다.
+  bool _needsTrim(PickedFile file) {
+    final canTrim = widget.trimmer != null || (canTrimVideo && file.path != null);
+    if (!canTrim) return false;
+    if (file.bytes.isEmpty) return true;
+    final seconds = mp4DurationSeconds(file.bytes);
+    return seconds != null && seconds >= maxVideoSeconds;
+  }
+
+  Future<Uint8List?> _openTrim(PickedFile file) => Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute(builder: (_) => VideoTrimScreen(path: file.path!)),
+      );
 
   Future<void> _run(Future<void> Function() action) async {
     setState(() {
@@ -309,7 +345,11 @@ class _CheckInScreenState extends State<CheckInScreen> {
       ];
 
   List<Widget> _result() => [
-        const Text('다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요.', style: TextStyle(fontSize: 15, color: JdColors.subtle)),
+        Text(
+            canTrimVideo || widget.trimmer != null
+                ? '다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요. 긴 동영상은 5초만 잘라 올릴 수 있어요.'
+                : '다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요.',
+            style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 12),
         if (_photo != null) _photoPreview(_photo!),
         if (_video != null)
@@ -378,7 +418,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _busy ? null : _chooseVideo,
                   icon: const Icon(Icons.video_library_outlined),
-                  label: const Text('동영상 (5초 미만)'),
+                  label: Text(canTrimVideo || widget.trimmer != null ? '동영상' : '동영상 (5초 미만)'),
                 ),
               ),
             ],
