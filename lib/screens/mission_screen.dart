@@ -149,7 +149,7 @@ class _MissionScreenState extends State<MissionScreen> {
               Container(
                 width: 64,
                 height: 64,
-                decoration: const ShapeDecoration(
+                decoration: ShapeDecoration(
                   color: JdColors.soloTint,
                   shape: PixelBorder(step: 4, steps: 2, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
                 ),
@@ -164,9 +164,9 @@ class _MissionScreenState extends State<MissionScreen> {
                       Text('오늘의 주제: ${theme.title}',
                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 4),
-                      Text(theme.hint, style: const TextStyle(fontSize: 14, color: JdColors.subtle)),
+                      Text(theme.hint, style: TextStyle(fontSize: 14, color: JdColors.subtle)),
                     ] else
-                      Text(mission.description, style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
+                      Text(mission.description, style: TextStyle(fontSize: 15, color: JdColors.subtle)),
                   ],
                 ),
               ),
@@ -183,7 +183,7 @@ class _MissionScreenState extends State<MissionScreen> {
             else
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-                decoration: const ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
+                decoration: ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
                 child: Column(
                   children: [
                     _TimerDisplay(remaining: _remaining!),
@@ -197,7 +197,7 @@ class _MissionScreenState extends State<MissionScreen> {
                     Text(
                       _timeUp ? '시간이 끝났어요. 수고했어요.' : '먼저 끝나면 바로 완료해도 돼요.',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 13, color: JdColors.soloText),
+                      style: TextStyle(fontSize: 13, color: JdColors.soloText),
                     ),
                   ],
                 ),
@@ -206,7 +206,7 @@ class _MissionScreenState extends State<MissionScreen> {
           const SizedBox(height: 24),
           const Text('남기고 싶으면 (선택)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          const Text('사진과 메모는 나만 봐요. 사진은 방 벽 액자에 걸려요.',
+          Text('사진과 메모는 나만 봐요. 사진은 방 벽 액자에 걸려요.',
               style: TextStyle(fontSize: 12, color: JdColors.subtle)),
           const SizedBox(height: 12),
           if (_photo == null)
@@ -246,7 +246,7 @@ class _MissionScreenState extends State<MissionScreen> {
             child: Text(_saving ? '저장 중...' : '했어요'),
           ),
           const SizedBox(height: 8),
-          const Text('안 남겨도 완료돼요.',
+          Text('안 남겨도 완료돼요.',
               textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: JdColors.faint)),
         ],
       ),
@@ -265,8 +265,8 @@ class _TimerDisplay extends StatelessWidget {
       child: Text(
         formatDuration(remaining),
         key: const Key('timerText'),
-        style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w800, color: JdColors.soloText,
-            fontFeatures: [FontFeature.tabularFigures()]),
+        style: TextStyle(fontSize: 56, fontWeight: FontWeight.w800, color: JdColors.soloText,
+            fontFeatures: const [FontFeature.tabularFigures()]),
       ),
     );
   }

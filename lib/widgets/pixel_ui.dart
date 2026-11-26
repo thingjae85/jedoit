@@ -95,14 +95,14 @@ class PixelPanel extends StatelessWidget {
   const PixelPanel({
     super.key,
     required this.child,
-    this.color = JdColors.paperDeep,
+    this.color,
     this.padding = EdgeInsets.zero,
     this.border,
     this.step = 3,
   });
 
   final Widget child;
-  final Color color;
+  final Color? color;
   final EdgeInsetsGeometry padding;
   final Color? border;
   final double step;
@@ -112,7 +112,7 @@ class PixelPanel extends StatelessWidget {
     // 게임 창처럼 짙은 테두리와 아래 두께. 따로 테두리 색을 주면 얇은 판으로 그린다.
     if (border == null) {
       return GamePanel(
-        color: color == JdColors.paperDeep ? JdColors.cream : color,
+        color: color == null || color == JdColors.paperDeep ? JdColors.cream : color,
         lip: JdColors.creamLip,
         padding: padding,
         step: step,
@@ -262,7 +262,7 @@ class SectionTitle extends StatelessWidget {
                 child: Text(note!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: JdColors.subtle)),
+                    style: TextStyle(fontSize: 12, color: JdColors.subtle)),
               ),
             ),
           ] else
@@ -301,11 +301,11 @@ const kAppFont = 'Paperlogy';
 /// 제목·버튼·숫자에 쓰는 글꼴. 지금은 본문과 같은 앱 글꼴을 쓴다.
 const kGameFont = kAppFont;
 
-TextStyle gameText({double size = 12, Color color = JdColors.ink, double? height}) => TextStyle(
+TextStyle gameText({double size = 12, Color? color, double? height}) => TextStyle(
       fontFamily: kGameFont,
       fontSize: size,
       fontWeight: FontWeight.w700,
-      color: color,
+      color: color ?? JdColors.ink,
       height: height,
       letterSpacing: 0,
     );
@@ -315,16 +315,16 @@ class GamePanel extends StatelessWidget {
   const GamePanel({
     super.key,
     required this.child,
-    this.color = JdColors.cream,
-    this.lip = JdColors.creamLip,
+    this.color,
+    this.lip,
     this.padding = EdgeInsets.zero,
     this.depth = 4,
     this.step = 3,
   });
 
   final Widget child;
-  final Color color;
-  final Color lip;
+  final Color? color;
+  final Color? lip;
   final EdgeInsetsGeometry padding;
   final double depth;
   final double step;
@@ -333,14 +333,14 @@ class GamePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: ShapeDecoration(
-        color: lip,
-        shape: PixelBorder(step: step, steps: 2, side: const BorderSide(color: JdColors.edgeStrong, width: 1.5)),
+        color: lip ?? JdColors.creamLip,
+        shape: PixelBorder(step: step, steps: 2, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
       ),
       padding: EdgeInsets.fromLTRB(2, 2, 2, 2 + depth),
       child: Container(
         padding: padding,
         clipBehavior: Clip.antiAlias,
-        decoration: ShapeDecoration(color: color, shape: PixelBorder(step: step - 1, steps: 2)),
+        decoration: ShapeDecoration(color: color ?? JdColors.cream, shape: PixelBorder(step: step - 1, steps: 2)),
         child: child,
       ),
     );
@@ -354,9 +354,9 @@ class GameButton extends StatefulWidget {
     required this.label,
     required this.onTap,
     this.icon,
-    this.color = JdColors.woodLight,
-    this.lip = JdColors.woodDeep,
-    this.textColor = JdColors.outline,
+    this.color,
+    this.lip,
+    this.textColor,
     this.small = false,
     this.expand = false,
   });
@@ -364,17 +364,17 @@ class GameButton extends StatefulWidget {
   final String label;
   final VoidCallback? onTap;
   final Widget? icon;
-  final Color color;
-  final Color lip;
-  final Color textColor;
+  final Color? color;
+  final Color? lip;
+  final Color? textColor;
   final bool small;
 
   /// 가로를 꽉 채울지.
   final bool expand;
 
-  static const green = (JdColors.leaf, JdColors.leafLip, JdColors.cream);
-  static const wood = (JdColors.woodLight, JdColors.woodDeep, JdColors.outline);
-  static const cream = (JdColors.cream, JdColors.creamLip, JdColors.outline);
+  static final green = (JdColors.leaf, JdColors.leafLip, JdColors.cream);
+  static final wood = (JdColors.woodLight, JdColors.woodDeep, JdColors.outline);
+  static final cream = (JdColors.cream, JdColors.creamLip, JdColors.outline);
 
   @override
   State<GameButton> createState() => _GameButtonState();
@@ -388,9 +388,9 @@ class _GameButtonState extends State<GameButton> {
     final on = widget.onTap != null;
     final depth = widget.small ? 3.0 : 4.0;
     final pressed = _down && on;
-    final face = on ? widget.color : JdColors.seam;
-    final lip = on ? widget.lip : JdColors.seamDark;
-    final text = on ? widget.textColor : JdColors.faint;
+    final face = on ? (widget.color ?? JdColors.woodLight) : JdColors.seam;
+    final lip = on ? (widget.lip ?? JdColors.woodDeep) : JdColors.seamDark;
+    final text = on ? (widget.textColor ?? JdColors.outline) : JdColors.faint;
     final label = Row(
       mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -418,7 +418,7 @@ class _GameButtonState extends State<GameButton> {
           child: Container(
             decoration: ShapeDecoration(
               color: lip,
-              shape: const PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
+              shape: PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
             ),
             padding: EdgeInsets.fromLTRB(2, 2 + (pressed ? depth - 1 : 0), 2, 2 + (pressed ? 1 : depth)),
             child: Container(
@@ -634,7 +634,7 @@ class RoomNameButton extends StatelessWidget {
                     padding: const EdgeInsets.all(3),
                     decoration: ShapeDecoration(
                       color: onDark ? JdColors.cream : JdColors.woodLight,
-                      shape: const PixelBorder(
+                      shape: PixelBorder(
                           step: 2, steps: 1, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
                     ),
                     child: PixelPencil(size: size * 0.75),
@@ -680,7 +680,7 @@ Future<String?> showRoomNameDialog(BuildContext context, {required String curren
               textInputAction: TextInputAction.done,
               onSubmitted: (v) => Navigator.of(ctx).pop(v),
               style: gameText(size: 16),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: '예: 내 작업실',
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
@@ -697,7 +697,7 @@ Future<String?> showRoomNameDialog(BuildContext context, {required String curren
                 ),
               ),
             ),
-            const Text('비워 두면 처음 이름으로 돌아가요', style: TextStyle(fontSize: 12, color: JdColors.faint)),
+            Text('비워 두면 처음 이름으로 돌아가요', style: TextStyle(fontSize: 12, color: JdColors.faint)),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -732,34 +732,34 @@ Future<String?> showRoomNameDialog(BuildContext context, {required String curren
 
 /// 꾸미기 탭 아이콘들 (8×8 도트).
 abstract final class TabGlyphs {
-  static const _o = JdColors.outline;
+  static Color get _o => JdColors.outline;
 
   static Widget surface({double size = 14}) => PixelGlyph(
         rows: const ['oooooooo', 'oaabbaao', 'oaabbaao', 'obbaabbo', 'obbaabbo', 'oaabbaao', 'oaabbaao', 'oooooooo'],
-        palette: const {'o': _o, 'a': Color(0xFFF3EEE4), 'b': Color(0xFF8FB3CF)},
+        palette: {'o': _o, 'a': const Color(0xFFF3EEE4), 'b': const Color(0xFF8FB3CF)},
         size: size,
       );
 
   static Widget wall({double size = 14}) => PixelGlyph(
         rows: const ['...oo...', '..o..o..', 'oooooooo', 'osssssyo', 'osssssso', 'osgsssgo', 'oggggggo', 'oooooooo'],
-        palette: const {
+        palette: {
           'o': _o,
-          's': Color(0xFF9FD0EF),
-          'y': Color(0xFFF7D65A),
-          'g': Color(0xFF6FB85A),
+          's': const Color(0xFF9FD0EF),
+          'y': const Color(0xFFF7D65A),
+          'g': const Color(0xFF6FB85A),
         },
         size: size,
       );
 
   static Widget furniture({double size = 14}) => PixelGlyph(
         rows: const ['.oooooo.', '.owwwwo.', '.owwwwo.', 'oowwwwoo', 'orrrrrro', 'oooooooo', '.o....o.', '.o....o.'],
-        palette: const {'o': _o, 'w': Color(0xFFE8A87C), 'r': Color(0xFFC9734A)},
+        palette: {'o': _o, 'w': const Color(0xFFE8A87C), 'r': const Color(0xFFC9734A)},
         size: size,
       );
 
   static Widget buddy({double size = 14}) => PixelGlyph(
         rows: const ['oo....oo', 'obo..obo', '.oooooo.', 'obbbbbbo', 'obobbobo', 'obbwwbbo', '.obbbbo.', '..oooo..'],
-        palette: const {'o': _o, 'b': Color(0xFFD9985A), 'w': Color(0xFFF6E2C4)},
+        palette: {'o': _o, 'b': const Color(0xFFD9985A), 'w': const Color(0xFFF6E2C4)},
         size: size,
       );
 }
@@ -800,10 +800,10 @@ class CoinCounter extends StatelessWidget {
 
 /// 도트 진행 막대. 얇은 테두리 칸 안을 [value]만큼 채운다.
 class PixelBar extends StatelessWidget {
-  const PixelBar({super.key, required this.value, this.color = JdColors.wood, this.height = 10});
+  const PixelBar({super.key, required this.value, this.color, this.height = 10});
 
   final double value;
-  final Color color;
+  final Color? color;
   final double height;
 
   @override
@@ -812,7 +812,7 @@ class PixelBar extends StatelessWidget {
     return Container(
       height: height,
       padding: const EdgeInsets.all(2),
-      decoration: const ShapeDecoration(
+      decoration: ShapeDecoration(
         color: JdColors.paperDeep,
         shape: PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.edge, width: 1.5)),
       ),
@@ -821,7 +821,7 @@ class PixelBar extends StatelessWidget {
         child: FractionallySizedBox(
           widthFactor: v,
           heightFactor: 1,
-          child: ColoredBox(color: color),
+          child: ColoredBox(color: color ?? JdColors.wood),
         ),
       ),
     );

@@ -248,7 +248,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
       const _Step(title: '며칠 동안 할까요?'),
       Container(
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-        decoration: const ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
+        decoration: ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
         child: Column(
           children: [
             Row(
@@ -289,8 +289,8 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
         ),
       ),
       const SizedBox(height: 4),
-      const Padding(
-        padding: EdgeInsets.only(left: 4),
+      Padding(
+        padding: const EdgeInsets.only(left: 4),
         child: Text('1일부터 60일까지 정할 수 있어요', style: TextStyle(fontSize: 12, color: JdColors.subtle)),
       ),
       const SizedBox(height: 18),
@@ -315,7 +315,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
       ),
       Padding(
         padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-        child: Text(_mode.description, style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+        child: Text(_mode.description, style: TextStyle(fontSize: 13, color: JdColors.subtle)),
       ),
       const SizedBox(height: 22),
       _nicknameField(),
@@ -468,7 +468,7 @@ class _PreviewCard extends StatelessWidget {
               Container(
                 width: 44,
                 height: 44,
-                decoration: const ShapeDecoration(color: JdColors.togetherChip, shape: JdShapes.soft),
+                decoration: ShapeDecoration(color: JdColors.togetherChip, shape: JdShapes.soft),
                 child: Icon(icon, color: JdColors.together),
               ),
               const SizedBox(width: 12),
@@ -478,7 +478,7 @@ class _PreviewCard extends StatelessWidget {
               if (badge != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: const ShapeDecoration(color: JdColors.woodLight, shape: JdShapes.tag),
+                  decoration: ShapeDecoration(color: JdColors.woodLight, shape: JdShapes.tag),
                   child: Text(badge!, style: gameText(size: 12, color: JdColors.woodText)),
                 ),
             ],
@@ -487,11 +487,11 @@ class _PreviewCard extends StatelessWidget {
           for (final l in lines)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text(l, style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+              child: Text(l, style: TextStyle(fontSize: 13, color: JdColors.subtle)),
             ),
           if (note != null) ...[
             const SizedBox(height: 10),
-            Text(note!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.woodText)),
+            Text(note!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.woodText)),
           ],
         ],
       ),

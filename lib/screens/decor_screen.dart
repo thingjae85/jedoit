@@ -408,7 +408,7 @@ class _DecorScreenState extends State<DecorScreen> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: widget.night
-                      ? const [JdColors.roomNavy, JdColors.roomNavyDeep]
+                      ? [JdColors.roomNavy, JdColors.roomNavyDeep]
                       : const [Color(0xFFB7E2F1), Color(0xFFE6F6F8)],
                 ),
               ),

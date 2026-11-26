@@ -231,7 +231,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const Text('단톡방'),
             Text(
               widget.members.isEmpty ? widget.title : '${widget.title} · ${widget.members.length}명',
-              style: const TextStyle(fontSize: 12, color: JdColors.subtle, fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 12, color: JdColors.subtle, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -263,9 +263,9 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final entries = _entries();
     if (entries.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Text('아직 대화가 없어요.\n첫 인사를 건네 보세요!',
               textAlign: TextAlign.center, style: TextStyle(color: JdColors.faint, height: 1.5)),
         ),
@@ -326,7 +326,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _inputBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: JdColors.line)),
       ),
@@ -399,7 +399,7 @@ class _DayDivider extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(color: JdColors.paperDeep, borderRadius: BorderRadius.circular(999)),
           child: Text('${day.month}월 ${day.day}일 ${weekdays[day.weekday - 1]}요일',
-              style: const TextStyle(fontSize: 12, color: JdColors.subtle)),
+              style: TextStyle(fontSize: 12, color: JdColors.subtle)),
         ),
       ),
     );
@@ -446,7 +446,7 @@ class _Row extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final time = showTime
-        ? Text(_time(at), style: const TextStyle(fontSize: 11, color: JdColors.faint))
+        ? Text(_time(at), style: TextStyle(fontSize: 11, color: JdColors.faint))
         : const SizedBox.shrink();
 
     if (isMe) {
@@ -478,7 +478,7 @@ class _Row extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4, left: 2),
                     child: Text(displayName,
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.subtle)),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.subtle)),
                   ),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -509,7 +509,7 @@ class _TextBubble extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: isMe ? null : Border.all(color: JdColors.line),
       ),
-      child: Text(text, style: const TextStyle(fontSize: 15, height: 1.35, color: JdColors.ink)),
+      child: Text(text, style: TextStyle(fontSize: 15, height: 1.35, color: JdColors.ink)),
     );
   }
 }
@@ -533,7 +533,7 @@ class _CheckinBubble extends StatelessWidget {
       color: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: JdColors.togetherFill, width: 1.5),
+        side: BorderSide(color: JdColors.togetherFill, width: 1.5),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -549,11 +549,11 @@ class _CheckinBubble extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(
                   children: [
-                    const Icon(Icons.check_circle, size: 18, color: JdColors.together),
+                    Icon(Icons.check_circle, size: 18, color: JdColors.together),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(item.isMe ? '오늘 인증을 올렸어요' : '${item.displayName}님이 인증했어요',
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
                     ),
                   ],
@@ -565,18 +565,18 @@ class _CheckinBubble extends StatelessWidget {
                   child: Image.network(
                     item.mediaUrl!,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const ColoredBox(
+                    errorBuilder: (_, __, ___) => ColoredBox(
                       color: JdColors.empty,
                       child: Center(child: Icon(Icons.broken_image_outlined, color: JdColors.faint)),
                     ),
                   ),
                 )
               else if (item.mediaUrl != null && item.media == FeedMedia.video)
-                const AspectRatio(
+                AspectRatio(
                   aspectRatio: 4 / 3,
                   child: ColoredBox(
                     color: JdColors.roomNavy,
-                    child: Center(child: Icon(Icons.play_circle_fill, size: 48, color: Colors.white)),
+                    child: const Center(child: Icon(Icons.play_circle_fill, size: 48, color: Colors.white)),
                   ),
                 ),
               if (note.isNotEmpty)
@@ -585,18 +585,18 @@ class _CheckinBubble extends StatelessWidget {
                   child: Text(note,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14, height: 1.35, color: JdColors.ink)),
+                      style: TextStyle(fontSize: 14, height: 1.35, color: JdColors.ink)),
                 ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
                 child: Row(
                   children: [
                     if (reactions.isNotEmpty)
-                      Text(reactions, style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+                      Text(reactions, style: TextStyle(fontSize: 13, color: JdColors.subtle)),
                     const Spacer(),
                     Text(item.isMe ? '눌러서 보기' : '눌러서 응원하기',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JdColors.together)),
-                    const Icon(Icons.chevron_right, size: 16, color: JdColors.together),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: JdColors.together)),
+                    Icon(Icons.chevron_right, size: 16, color: JdColors.together),
                   ],
                 ),
               ),

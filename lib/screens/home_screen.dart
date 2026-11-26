@@ -445,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final shop = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.lock_rounded, color: JdColors.wood, size: 32),
+        icon: Icon(Icons.lock_rounded, color: JdColors.wood, size: 32),
         title: const Text('아직 잠겨 있어요', textAlign: TextAlign.center),
         content: const Text(
           '오늘의 미션을 하나 해 보세요.\n상자가 치워지면 꾸미기가 열려요.\n\n상점은 지금도 구경하고 미리 사 둘 수 있어요.',
@@ -526,7 +526,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ListTile(
                 leading: Image.asset(b.asset, width: 44, height: 46, filterQuality: FilterQuality.none),
                 title: Text(b.name),
-                trailing: b.id == _prefs.buddy ? const Icon(Icons.check, color: JdColors.solo) : null,
+                trailing: b.id == _prefs.buddy ? Icon(Icons.check, color: JdColors.solo) : null,
                 onTap: () => Navigator.of(ctx).pop(b.id),
               ),
           ],
@@ -620,7 +620,7 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('${formatDateTime(letter.writtenAt)}에 썼어요',
-                  style: const TextStyle(fontSize: 12, color: JdColors.subtle)),
+                  style: TextStyle(fontSize: 12, color: JdColors.subtle)),
               const SizedBox(height: 12),
               Text(letter.text, style: const TextStyle(fontSize: 15, height: 1.5)),
             ],
@@ -725,7 +725,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('${today.month}월 ${today.day}일 ${_weekdays[today.weekday - 1]}요일',
-                        style: const TextStyle(fontSize: 12, color: JdColors.subtle, letterSpacing: 0.2)),
+                        style: TextStyle(fontSize: 12, color: JdColors.subtle, letterSpacing: 0.2)),
                     const SizedBox(height: 2),
                     Text('저두잇', style: gameText(size: 24, height: 1.2)),
                   ],
@@ -853,7 +853,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 4),
-          const Text('혼자 하기 힘든 날엔 친구랑 같이 해 봐요. 원할 때만 써도 괜찮아요.',
+          Text('혼자 하기 힘든 날엔 친구랑 같이 해 봐요. 원할 때만 써도 괜찮아요.',
               style: TextStyle(fontSize: 13, color: JdColors.subtle)),
           const SizedBox(height: 16),
           if (!available)
@@ -889,8 +889,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: _newChallenge,
               )
             else
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
                 child: Text('챌린지는 한 번에 $maxOpenRooms개까지 함께할 수 있어요. 하나가 끝나면 새로 시작해 보세요.',
                     style: TextStyle(fontSize: 13, color: JdColors.subtle)),
               ),
@@ -899,7 +899,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const Text('최근에 끝난 챌린지',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              const Text('결과를 보고, 같은 친구들과 바로 다시 할 수 있어요. 지난 챌린지는 모두 기록 탭에 있어요.',
+              Text('결과를 보고, 같은 친구들과 바로 다시 할 수 있어요. 지난 챌린지는 모두 기록 탭에 있어요.',
                   style: TextStyle(fontSize: 13, color: JdColors.subtle)),
               const SizedBox(height: 10),
               for (final j in _finished) ...[
@@ -939,13 +939,13 @@ class _WelcomeBack extends StatelessWidget {
         children: [
           Image.asset(buddy.asset, width: 33, height: 35, filterQuality: FilterQuality.none),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('다시 와줘서 반가워요',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JdColors.woodText)),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text('쉬었던 날도 괜찮아요. 그동안 채운 방은 그대로예요.\n오늘은 제일 쉬운 거 하나만 해 볼까요?',
                     style: TextStyle(fontSize: 13, height: 1.45, color: JdColors.subtle)),
               ],
@@ -1152,11 +1152,11 @@ class _RoomCard extends StatelessWidget {
                     light: true,
                     onTap: () => onOpenLetter(letter!),
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.mail, size: 14, color: JdColors.togetherText),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Text('편지가 왔어요',
                             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: JdColors.togetherText)),
                       ],
@@ -1187,7 +1187,7 @@ class _BuddyBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const shape = PixelBorder(step: 3, steps: 1, side: BorderSide(color: JdColors.edgeStrong, width: 1.5));
+    final shape = PixelBorder(step: 3, steps: 1, side: BorderSide(color: JdColors.edgeStrong, width: 1.5));
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -1209,10 +1209,10 @@ class _BuddyBubble extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(line, style: const TextStyle(fontSize: 13, height: 1.35, color: JdColors.ink)),
+                        Text(line, style: TextStyle(fontSize: 13, height: 1.35, color: JdColors.ink)),
                         if (change != null)
                           Text(change!,
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: JdColors.leafDeep)),
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: JdColors.leafDeep)),
                       ],
                     ),
                   ),
@@ -1223,12 +1223,12 @@ class _BuddyBubble extends StatelessWidget {
           ),
         ),
         // 꼬리: 도트 계단 삼각형. 말풍선 테두리를 덮어 이어 보이게 한다.
-        const Positioned(
+        Positioned(
           left: 18,
           top: 0,
           child: IgnorePointer(
             child: PixelGlyph(
-              rows: ['...oo...', '..occo..', '.occcco.', 'occccccco'],
+              rows: const ['...oo...', '..occo..', '.occcco.', 'occccccco'],
               palette: {'c': JdColors.cream, 'o': JdColors.outline},
               size: 10,
             ),
@@ -1376,11 +1376,11 @@ class _FriendRow extends StatelessWidget {
               child: Container(
                 width: 52,
                 height: 52,
-                decoration: const ShapeDecoration(
+                decoration: ShapeDecoration(
                   color: JdColors.cream,
                   shape: PixelBorder(step: 5.2, steps: 2, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
                 ),
-                child: const Icon(Icons.add, color: JdColors.woodText),
+                child: Icon(Icons.add, color: JdColors.woodText),
               ),
             ),
         ],
@@ -1464,9 +1464,9 @@ class _WeekStrip extends StatelessWidget {
                     loadFailed ? '다시 불러오기' : '전체 기록 $recordCount개 보기',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.woodText),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.woodText),
                   ),
-                  const Icon(Icons.chevron_right_rounded, size: 18, color: JdColors.woodText),
+                  Icon(Icons.chevron_right_rounded, size: 18, color: JdColors.woodText),
                 ],
               ),
             ),
@@ -1483,8 +1483,8 @@ class _WeekStrip extends StatelessWidget {
                     Expanded(child: _day(monday.add(Duration(days: i)), _weekdays[i])),
                 ],
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
                 child: Divider(height: 1, color: JdColors.seam),
               ),
               Padding(
@@ -1494,7 +1494,7 @@ class _WeekStrip extends StatelessWidget {
                     Expanded(
                       child: Text(
                         loadFailed ? '기록을 불러오지 못했어요' : '오늘 $todayCount번 완료',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: JdColors.ink),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: JdColors.ink),
                       ),
                     ),
                     if (!loadFailed) _Legend(),
@@ -1579,13 +1579,13 @@ class _Legend extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('적게', style: TextStyle(fontSize: 11, color: JdColors.faint)),
+        Text('적게', style: TextStyle(fontSize: 11, color: JdColors.faint)),
         const SizedBox(width: 2),
         swatch(JdColors.woodLight),
         swatch(JdColors.wood),
         swatch(JdColors.leaf),
         const SizedBox(width: 4),
-        const Text('다', style: TextStyle(fontSize: 11, color: JdColors.faint)),
+        Text('다', style: TextStyle(fontSize: 11, color: JdColors.faint)),
       ],
     );
   }
@@ -1602,7 +1602,7 @@ class _MissionPanel extends StatelessWidget {
       child: Column(
         children: [
           for (var i = 0; i < children.length; i++) ...[
-            if (i > 0) const Divider(height: 1, indent: 52, color: JdColors.seam),
+            if (i > 0) Divider(height: 1, indent: 52, color: JdColors.seam),
             children[i],
           ],
         ],
@@ -1653,13 +1653,13 @@ class _MissionRow extends StatelessWidget {
                             decoration: completed ? TextDecoration.lineThrough : null,
                             decorationColor: JdColors.seamDark)),
                     if (completed)
-                      const Text('오늘 완료했어요 · 다시 해도 좋아요',
+                      Text('오늘 완료했어요 · 다시 해도 좋아요',
                           style: TextStyle(fontSize: 12, color: JdColors.faint))
                     else if (subtitle != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(subtitle!,
-                            style: const TextStyle(fontSize: 12, color: JdColors.woodText, fontWeight: FontWeight.w600)),
+                            style: TextStyle(fontSize: 12, color: JdColors.woodText, fontWeight: FontWeight.w600)),
                       ),
                   ],
                 ),
@@ -1672,10 +1672,10 @@ class _MissionRow extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.timer_outlined, size: 14, color: JdColors.faint),
+                      Icon(Icons.timer_outlined, size: 14, color: JdColors.faint),
                       const SizedBox(width: 3),
                       Text('${mission.timerMinutes}분',
-                          style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                          style: TextStyle(fontSize: 12, color: JdColors.faint)),
                     ],
                   ),
                 ),
@@ -1704,20 +1704,20 @@ class _AddMissionRow extends StatelessWidget {
             Container(
               width: 24,
               height: 24,
-              decoration: const ShapeDecoration(
+              decoration: ShapeDecoration(
                 shape: PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.seamDark, width: 1.5)),
               ),
-              child: const Icon(Icons.add, size: 16, color: JdColors.woodText),
+              child: Icon(Icons.add, size: 16, color: JdColors.woodText),
             ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('내 미션 추가',
+                  Text('내 미션 추가',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: JdColors.woodText)),
                   if (hint != null)
-                    Text(hint!, style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                    Text(hint!, style: TextStyle(fontSize: 12, color: JdColors.faint)),
                 ],
               ),
             ),
@@ -1739,12 +1739,12 @@ class _LetterRow extends StatelessWidget {
       depth: 3,
       child: InkWell(
         onTap: onTap,
-        child: const Padding(
-          padding: EdgeInsets.fromLTRB(14, 12, 10, 12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
           child: Row(
             children: [
               PixelGlyph(
-                rows: [
+                rows: const [
                   'oooooooooo',
                   'owwwwwwwwo',
                   'oowwwwwwoo',
@@ -1756,7 +1756,7 @@ class _LetterRow extends StatelessWidget {
                 palette: {'o': JdColors.woodText, 'w': JdColors.cream},
                 size: 16,
               ),
-              SizedBox(width: 14),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1836,7 +1836,7 @@ class _ChallengeCard extends StatelessWidget {
                             fontSize: 15, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Text(detail,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13, color: JdColors.subtle)),
                     if (showProgress && (r!.goal ?? r.totalElements) > 0) ...[
                       const SizedBox(height: 10),
@@ -1849,7 +1849,7 @@ class _ChallengeCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(Icons.chevron_right, color: JdColors.subtle),
+              Icon(Icons.chevron_right, color: JdColors.subtle),
             ],
           ),
         ),
