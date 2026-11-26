@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:jeoduit/models/mission_record.dart';
 import 'package:jeoduit/models/room.dart';
 import 'package:jeoduit/screens/checkin_screen.dart';
 import 'package:jeoduit/screens/records_screen.dart';
@@ -934,5 +936,25 @@ void main() {
     await tester.tap(find.text('5일 책 10쪽 읽기'));
     await tester.pumpAndSettle();
     expect(opened, ['r1']);
+  });
+
+  testWidgets('기록 탭: 사진을 남긴 미션 기록을 누르면 사진을 크게 본다', (tester) async {
+    _tall(tester);
+    SharedPreferences.setMockInitialValues({});
+    final repo = LocalRecordRepository();
+    final jpeg = img.encodeJpg(img.Image(width: 8, height: 8));
+    final now = DateTime.now();
+    await repo.add(MissionRecord(
+        id: 'p1', missionId: 'discovery', startedAt: now, completedAt: now, theme: 'green', memo: '공원 나무', photo: base64Encode(jpeg)));
+    await tester.pumpWidget(_wrap(RecordsScreen(repository: repo)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recordPhotoLarge')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('recordPhoto-p1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recordPhotoLarge')), findsOneWidget);
+    expect(find.text('공원 나무'), findsNWidgets(2));
+    await tester.tap(find.byTooltip('닫기'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recordPhotoLarge')), findsNothing);
   });
 }

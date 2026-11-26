@@ -210,7 +210,6 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
           '$_days일 동안 하루 한 번 · ${_mode.label}',
           '2~4명 · 1인당 목표 $_goalPerPerson회',
         ],
-        days: _days,
         note: _restart ? '지난번 친구들이 함께 들어와 있어요. 바꾸고 싶은 것만 고치세요.' : null,
       ),
       const SizedBox(height: 22),
@@ -448,20 +447,17 @@ class _Tile extends StatelessWidget {
 
 /// 위에 늘 보이는 "만들 챌린지" 카드. 고른 값이 바로 반영된다.
 class _PreviewCard extends StatelessWidget {
-  const _PreviewCard({required this.icon, required this.title, required this.lines, this.badge, this.days, this.note});
+  const _PreviewCard({required this.icon, required this.title, required this.lines, this.badge, this.note});
 
   final IconData icon;
   final String title;
   final List<String> lines;
   final String? badge;
 
-  /// 7일 이하면 하루 칸을 그려 기간이 한눈에 보이게 한다.
-  final int? days;
   final String? note;
 
   @override
   Widget build(BuildContext context) {
-    final d = days;
     return GamePanel(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Column(
@@ -493,24 +489,6 @@ class _PreviewCard extends StatelessWidget {
               padding: const EdgeInsets.only(top: 2),
               child: Text(l, style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
             ),
-          if (d != null && d <= 7) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                for (var i = 0; i < d; i++) ...[
-                  if (i > 0) const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      height: 22,
-                      alignment: Alignment.center,
-                      decoration: const ShapeDecoration(color: JdColors.paper, shape: JdShapes.chip),
-                      child: Text('${i + 1}', style: const TextStyle(fontSize: 11, color: JdColors.faint)),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
           if (note != null) ...[
             const SizedBox(height: 10),
             Text(note!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.woodText)),

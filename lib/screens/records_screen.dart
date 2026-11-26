@@ -497,16 +497,23 @@ class _RecordTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final time = record.completedAt.toLocal();
     final title = recordTitle(record);
-    return ConstrainedBox(
+    return InkWell(
+      onTap: record.hasPhoto ? () => _showPhoto(context, record) : null,
+      customBorder: const PixelBorder(step: 2, steps: 1),
+      child: ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 52),
       child: Row(
         children: [
           if (record.hasPhoto)
-            ClipPath(
-              clipper: const ShapeBorderClipper(shape: PixelBorder(step: 2, steps: 1)),
-              child: Image.memory(base64Decode(record.photo!),
-                  width: 40, height: 40, fit: BoxFit.cover, gaplessPlayback: true,
-                  errorBuilder: (_, __, ___) => const CheckSquare(checked: true)),
+            Semantics(
+              label: '사진 크게 보기',
+              child: ClipPath(
+                key: ValueKey('recordPhoto-${record.id}'),
+                clipper: const ShapeBorderClipper(shape: PixelBorder(step: 2, steps: 1)),
+                child: Image.memory(base64Decode(record.photo!),
+                    width: 48, height: 48, fit: BoxFit.cover, gaplessPlayback: true,
+                    errorBuilder: (_, __, ___) => const CheckSquare(checked: true)),
+              ),
             )
           else
             const CheckSquare(checked: true),
@@ -531,6 +538,64 @@ class _RecordTile extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
+}
+
+/// 미션 기록 사진을 크게 본다. 미션 이름·메모·시각을 함께 보여 준다.
+Future<void> _showPhoto(BuildContext context, MissionRecord record) {
+  final t = record.completedAt.toLocal();
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InteractiveViewer(
+            maxScale: 4,
+            child: Image.memory(base64Decode(record.photo!),
+                key: const Key('recordPhotoLarge'),
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
+                errorBuilder: (_, __, ___) => const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('사진을 불러오지 못했어요', textAlign: TextAlign.center),
+                    )),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(recordTitle(record), style: gameText(size: 16)),
+                      const SizedBox(height: 2),
+                      Text('${t.year}.${t.month}.${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+                          style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                      if (record.memo.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(record.memo, style: const TextStyle(fontSize: 14, color: JdColors.ink)),
+                      ],
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: '닫기',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
