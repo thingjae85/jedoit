@@ -237,11 +237,24 @@ mixin _WaveClock<T extends StatefulWidget> on State<T>, SingleTickerProviderStat
 
 /// 물이 [value]만큼 차오르는 수조. 상어가 그 안에서 헤엄친다. 방의 함께 진행도에 쓴다.
 class SeaTank extends StatefulWidget {
-  const SeaTank({super.key, required this.value, required this.label, this.size = const Size(150, 118)});
+  const SeaTank({
+    super.key,
+    required this.value,
+    required this.label,
+    this.size = const Size(150, 118),
+    this.sharkWidth,
+    this.decorative = false,
+  });
 
   final double value;
   final String label;
   final Size size;
+
+  /// 상어 너비. 없으면 수조 너비의 절반쯤.
+  final double? sharkWidth;
+
+  /// 꾸밈 그림으로만 쓸 때. 읽어 주는 글을 붙이지 않는다.
+  final bool decorative;
 
   @override
   State<SeaTank> createState() => _SeaTankState();
@@ -251,33 +264,32 @@ class _SeaTankState extends State<SeaTank> with SingleTickerProviderStateMixin, 
   @override
   Widget build(BuildContext context) {
     final v = widget.value.clamp(0.0, 1.0).toDouble();
-    return Semantics(
-      label: '함께 진행도 ${widget.label}',
-      child: SizedBox.fromSize(
-        size: widget.size,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7FCFD),
-            border: Border.all(color: JdColors.edgeStrong, width: 2),
-          ),
-          child: ClipRect(
-            child: AnimatedBuilder(
-              animation: clock,
-              builder: (context, _) {
-                final t = clock.value * 2 * math.pi;
-                final inner = Size(widget.size.width - 4, widget.size.height - 4);
-                final surfaceY = inner.height - 10 - (inner.height - 22) * v;
-                final sharkW = inner.width * 0.47;
-                final sharkH = sharkW * SeaArt.shark.length / SeaArt.shark.first.length;
-                final sharkTop = math.max(surfaceY + 6, inner.height * 0.42) + 3 * math.sin(t);
-                return Stack(
-                  children: [
-                    Positioned.fill(child: CustomPaint(painter: _TankPainter(t: t, level: v))),
-                    Positioned(
-                      left: (inner.width - sharkW) / 2,
-                      top: math.min(sharkTop, inner.height - 14 - sharkH),
-                      child: ExcludeSemantics(child: SeaShark(size: sharkH)),
-                    ),
+    final tank = SizedBox.fromSize(
+      size: widget.size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7FCFD),
+          border: Border.all(color: JdColors.edgeStrong, width: 2),
+        ),
+        child: ClipRect(
+          child: AnimatedBuilder(
+            animation: clock,
+            builder: (context, _) {
+              final t = clock.value * 2 * math.pi;
+              final inner = Size(widget.size.width - 4, widget.size.height - 4);
+              final surfaceY = inner.height - 10 - (inner.height - 22) * v;
+              final sharkW = widget.sharkWidth ?? inner.width * 0.47;
+              final sharkH = sharkW * SeaArt.shark.length / SeaArt.shark.first.length;
+              final sharkTop = math.max(surfaceY + 6, inner.height * 0.42) + 3 * math.sin(t);
+              return Stack(
+                children: [
+                  Positioned.fill(child: CustomPaint(painter: _TankPainter(t: t, level: v))),
+                  Positioned(
+                    left: (inner.width - sharkW) / 2,
+                    top: math.min(sharkTop, inner.height - 14 - sharkH),
+                    child: ExcludeSemantics(child: SeaShark(size: sharkH)),
+                  ),
+                  if (widget.label.isNotEmpty)
                     Positioned(
                       right: 6,
                       top: 4,
@@ -286,14 +298,15 @@ class _SeaTankState extends State<SeaTank> with SingleTickerProviderStateMixin, 
                             style: gameText(size: 18, color: JdColors.woodText).copyWith(fontWeight: FontWeight.w800)),
                       ),
                     ),
-                  ],
-                );
-              },
-            ),
+                ],
+              );
+            },
           ),
         ),
       ),
     );
+    if (widget.decorative) return ExcludeSemantics(child: tank);
+    return Semantics(label: '함께 진행도 ${widget.label}', child: tank);
   }
 }
 
@@ -547,4 +560,86 @@ class SkinPrimaryButton extends StatelessWidget {
     if (icon == null) return FilledButton(style: style, onPressed: onPressed, child: Text(label));
     return FilledButton.icon(style: style, onPressed: onPressed, icon: Icon(icon), label: Text(label));
   }
+}
+
+/// 빈 화면 그림: 작은 수조에서 상어가 헤엄친다.
+class SeaEmptyArt extends StatelessWidget {
+  const SeaEmptyArt({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const SeaTank(value: 0.78, label: '', size: Size(132, 92), sharkWidth: 64, decorative: true);
+}
+
+/// 판 아래쪽에 까는 얕은 물 띠. 상어가 지나간다.
+class SeaStrip extends StatelessWidget {
+  const SeaStrip({super.key, this.height = 44});
+  final double height;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, c) => SeaTank(
+          value: 0.8,
+          label: '',
+          size: Size(c.maxWidth, height),
+          sharkWidth: 46,
+          decorative: true,
+        ),
+      );
+}
+
+/// 빈 기록 그림: 안경 쓴 꽃게가 양피지를 들여다본다.
+class SeaCrabReader extends StatelessWidget {
+  const SeaCrabReader({super.key, this.size = 96});
+  final double size;
+
+  static const rows = [
+    '......................................',
+    '......................................',
+    '.............KKK......KKK.............',
+    '............KgggK....KgggK............',
+    '...........KgwwwgKKKKgwwwgK...........',
+    '..........KgwwwwwggggwwwwwgK..........',
+    '..........KgwwKKwgKKgwwKKwgK..........',
+    '...........KgwKKgK..KgwKKgK...........',
+    '............KgggKKKKKKgggK............',
+    '...........KKKrrrrrrrrrrKKK...........',
+    '..........KrroooooooooooorrK..........',
+    '.........KrooooorrrrrrrrrrrrK.........',
+    '........KrrrrrrrrrrrrrrrrrrrrK........',
+    '.......KKrrccrrrrKrrKrrrrccrrKK.......',
+    '....KKKqqKrrrrrrrrKKrrrrrrrrKqqKKK....',
+    '...KqqqqqKPPPPPPPPPPPPPPPPPPKqqqqqK...',
+    '..KqqoqqqKPPPPPPPPPPPPPPPPPPKqqqoqqK..',
+    '.KqqoqqqqKrpppppppppppppppprKqqqqoqqK.',
+    '.KqqqqqKKKrpplllllplllllppprKKKqqqqqK.',
+    '..KqqqqqqKKppppppppppppppppKKqqqqqqK..',
+    '...KqqqqKKKpplllllpllllppppKKKqqqqK...',
+    '....KKKKKKRppppppppppppppppRKKKKKK....',
+    '.....KRKKRKpplllllplllllplpKRKKRK.....',
+    '......KKRKKppppppppppppppppKKRKK......',
+    '........K.KpplllllplpppppppK.K........',
+    '..........KppppppppppppppppK..........',
+    '.........KPPPPPPPPPPPPPPPPPPK.........',
+    '.........KPPPPPPPPPPPPPPPPPPK.........',
+    '..........KKKKKKKKKKKKKKKKKK..........',
+    '......................................',
+  ];
+
+  static const palette = {
+    'r': Color(0xFFE0603F),
+    'q': Color(0xFFEA6A48),
+    'R': Color(0xFFB84A30),
+    'o': Color(0xFFFAA587),
+    'w': Color(0xFFFFFFFF),
+    'K': Color(0xFF3A2A26),
+    'g': Color(0xFF2B3A55),
+    'p': Color(0xFFF3E2B8),
+    'P': Color(0xFFD9BE86),
+    'l': Color(0xFFA88B5A),
+    'c': Color(0xFFFFAAB4),
+  };
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(child: PixelGlyph(rows: rows, palette: palette, size: size));
 }

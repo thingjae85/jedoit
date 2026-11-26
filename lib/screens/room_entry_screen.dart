@@ -5,6 +5,7 @@ import '../services/room_service.dart';
 import '../theme.dart';
 import '../widgets/jd_widgets.dart';
 import '../widgets/pixel_ui.dart';
+import '../widgets/skin.dart';
 
 /// 방 만들기 또는 초대 코드로 참가하기. 방 전용 닉네임(2~10자)을 함께 받는다.
 /// 성공하면 방 ID를 반환하며 닫힌다.
@@ -168,9 +169,11 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-        children: _joining ? _joinChildren() : _createChildren(),
+      body: SeaBackdrop(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+          children: _joining ? _joinChildren() : _createChildren(),
+        ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
@@ -186,11 +189,14 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 13)),
                 ),
-              FilledButton(
-                style: _joining ? null : FilledButton.styleFrom(backgroundColor: JdColors.together),
-                onPressed: _canSubmit ? _submit : null,
-                child: Text(_submitLabel),
-              ),
+              if (JdColors.ocean)
+                SeaTubeButton(onPressed: _canSubmit ? _submit : null, label: _submitLabel)
+              else
+                FilledButton(
+                  style: _joining ? null : FilledButton.styleFrom(backgroundColor: JdColors.together),
+                  onPressed: _canSubmit ? _submit : null,
+                  child: Text(_submitLabel),
+                ),
             ],
           ),
         ),
@@ -493,6 +499,7 @@ class _PreviewCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(note!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.woodText)),
           ],
+          if (JdColors.ocean) ...[const SizedBox(height: 12), const SeaStrip()],
         ],
       ),
     );

@@ -9,6 +9,7 @@ import '../services/record_repository.dart';
 import '../theme.dart';
 import '../widgets/jd_widgets.dart';
 import '../widgets/pixel_ui.dart';
+import '../widgets/skin.dart';
 
 /// 개인 기록 목록. 기록 하나 삭제·전체 삭제는 확인창을 거친다.
 class RecordsScreen extends StatefulWidget {
@@ -210,15 +211,18 @@ class _RecordsScreenState extends State<RecordsScreen> {
               ? Center(child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.spa_outlined, size: 56, color: JdColors.solo),
+                    if (JdColors.ocean)
+                      const SeaCrabReader()
+                    else
+                      Icon(Icons.spa_outlined, size: 56, color: JdColors.solo),
                     const SizedBox(height: 16),
                     const Text('아직 기록이 없어요', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 8),
                     const Text('미션 하나를 완료하고 첫 기록을 남겨 보세요.'),
                     const SizedBox(height: 16),
-                    FilledButton(
+                    SkinPrimaryButton(
                       onPressed: widget.onPickMission ?? () => Navigator.of(context).pop(),
-                      child: const Text('미션 고르기'),
+                      label: '미션 고르기',
                     ),
                   ]),
                 ))
@@ -239,8 +243,14 @@ class _RecordsScreenState extends State<RecordsScreen> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text('아직 함께한 챌린지가 없어요.\n챌린지 탭에서 친구와 시작해 보세요.',
-              textAlign: TextAlign.center, style: TextStyle(color: JdColors.subtle)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (JdColors.ocean) ...[const SeaEmptyArt(), const SizedBox(height: 16)],
+              Text('아직 함께한 챌린지가 없어요.\n챌린지 탭에서 친구와 시작해 보세요.',
+                  textAlign: TextAlign.center, style: TextStyle(color: JdColors.subtle)),
+            ],
+          ),
         ),
       );
     }
