@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/mission_record.dart';
 import '../models/room.dart';
 import '../theme.dart';
+import 'pixel_ui.dart';
 
 /// 기기 시간 기준 날짜(시각 제거).
 DateTime dayOf(DateTime t) {
@@ -42,11 +43,11 @@ class CategoryChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(999)),
+      decoration: ShapeDecoration(color: background, shape: JdShapes.tag),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+          Container(width: 8, height: 8, color: dot),
           const SizedBox(width: 6),
           Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: foreground)),
         ],
@@ -68,10 +69,12 @@ class CheckSquare extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: checked ? color : Colors.white,
-        borderRadius: BorderRadius.circular(size / 3),
-        border: checked ? null : Border.all(color: JdColors.box, width: 2),
+      decoration: ShapeDecoration(
+        color: checked ? color : JdColors.cream,
+        shape: PixelBorder(
+            step: size / 8,
+            steps: 1,
+            side: BorderSide(color: checked ? JdColors.outline : JdColors.seamDark, width: 2)),
       ),
       child: checked ? Icon(Icons.check_rounded, size: size * 0.7, color: Colors.white) : null,
     );
@@ -102,24 +105,30 @@ class DayBlob extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color bg;
-    Color fg = JdColors.soloText;
+    // 홈의 이번 주 칸과 같은 색: 한 번 옅은 나무, 두 번 이상 나무, 다 하면 초록 체크.
+    Color fg = JdColors.woodText;
     if (future || count == 0) {
-      bg = today ? Colors.white : JdColors.empty;
+      bg = today ? JdColors.cream : JdColors.paperDeep;
     } else if (full) {
-      bg = JdColors.solo;
+      bg = JdColors.leaf;
+      fg = Colors.white;
+    } else if (count >= 2) {
+      bg = JdColors.wood;
       fg = Colors.white;
     } else {
-      bg = count >= 2 ? JdColors.soloMid : JdColors.soloTint;
+      bg = JdColors.woodLight;
     }
     final outlined = today || selected;
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(size * 0.36),
-        border: outlined ? Border.all(color: JdColors.ink, width: 2) : null,
+        shape: PixelBorder(
+            step: size / 10,
+            steps: 1,
+            side: outlined ? const BorderSide(color: JdColors.outline, width: 2) : BorderSide.none),
       ),
       child: full && !future
           ? Icon(Icons.check_rounded, size: size * 0.55, color: fg)
@@ -146,13 +155,16 @@ class FriendAvatar extends StatelessWidget {
       width: size,
       height: size,
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: ring ?? const Color(0xFFE4E6E9), width: 2),
+      decoration: ShapeDecoration(
+        shape: PixelBorder(step: size / 10, steps: 2, side: BorderSide(color: ring ?? JdColors.seam, width: 2)),
       ),
-      child: CircleAvatar(
-        backgroundColor: JdColors.avatars[index % JdColors.avatars.length],
-        child: Text(initial, style: const TextStyle(fontWeight: FontWeight.w700, color: JdColors.ink)),
+      child: Container(
+        alignment: Alignment.center,
+        decoration: ShapeDecoration(
+          color: JdColors.avatars[index % JdColors.avatars.length],
+          shape: PixelBorder(step: size / 14, steps: 2),
+        ),
+        child: Text(initial, style: TextStyle(fontSize: size * 0.38, fontWeight: FontWeight.w800, color: JdColors.ink)),
       ),
     );
   }
@@ -178,15 +190,18 @@ class ElementBar extends StatelessWidget {
           Expanded(
             child: Container(
               height: height,
-              decoration: BoxDecoration(
-                color: i < earned ? JdColors.togetherFill : Colors.white,
-                borderRadius: BorderRadius.circular(height < 10 ? height / 2 : 6),
-                border: i < earned
-                    ? null
-                    : Border.all(
-                        color: goal != null && i == goal! - 1 ? JdColors.together : JdColors.togetherEmpty,
-                        width: 2,
-                      ),
+              decoration: ShapeDecoration(
+                color: i < earned ? JdColors.togetherFill : JdColors.cream,
+                shape: PixelBorder(
+                  step: 2,
+                  steps: 1,
+                  side: i < earned
+                      ? BorderSide.none
+                      : BorderSide(
+                          color: goal != null && i == goal! - 1 ? JdColors.together : JdColors.togetherEmpty,
+                          width: 2,
+                        ),
+                ),
               ),
             ),
           ),

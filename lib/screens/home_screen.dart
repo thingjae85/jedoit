@@ -1376,12 +1376,11 @@ class _FriendRow extends StatelessWidget {
               child: Container(
                 width: 52,
                 height: 52,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: JdColors.panel,
-                  border: Border.all(color: const Color(0xFFE4E6E9), width: 2),
+                decoration: const ShapeDecoration(
+                  color: JdColors.cream,
+                  shape: PixelBorder(step: 5.2, steps: 2, side: BorderSide(color: JdColors.seamDark, width: 2)),
                 ),
-                child: const Icon(Icons.add, color: JdColors.subtle),
+                child: const Icon(Icons.add, color: JdColors.woodText),
               ),
             ),
         ],
@@ -1817,15 +1816,17 @@ class _ChallengeCard extends StatelessWidget {
       detail = signedIn ? '정리·책 읽기·운동 등 할 일과 기간을 정해 함께 해요' : '로그인 없이도 친구를 초대할 수 있어요';
     }
     return Material(
-      color: JdColors.togetherTint,
-      borderRadius: BorderRadius.circular(18),
+      color: JdColors.cream,
+      shape: JdShapes.card,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        customBorder: JdShapes.card,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
+              Icon(r == null ? Icons.add_circle_outline : challengeIcon(r.kind), color: JdColors.together),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1839,14 +1840,9 @@ class _ChallengeCard extends StatelessWidget {
                             fontSize: 13, color: JdColors.subtle)),
                     if (showProgress && (r!.goal ?? r.totalElements) > 0) ...[
                       const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: LinearProgressIndicator(
-                          value: (r.earned / (r.goal ?? r.totalElements)).clamp(0.0, 1.0).toDouble(),
-                          minHeight: 6,
-                          backgroundColor: Colors.white,
-                          color: JdColors.together,
-                        ),
+                      PixelBar(
+                        value: r.earned / (r.goal ?? r.totalElements),
+                        color: JdColors.together,
                       ),
                     ],
                   ],

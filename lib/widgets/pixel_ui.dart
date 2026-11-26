@@ -4,17 +4,19 @@ import '../theme.dart';
 
 /// 도트 그림과 어울리게 모서리를 계단처럼 깎은 네모.
 /// [step]은 계단 한 칸 크기, [steps]는 계단 수다. 테두리는 안쪽으로 그린다.
+/// [lip]을 주면 아래쪽에 그만큼 짙은 턱을 그려 눌리는 버튼처럼 보이게 한다 (바탕색과 상관없이 같은 그림자).
 class PixelBorder extends OutlinedBorder {
-  const PixelBorder({this.step = 3, this.steps = 2, super.side});
+  const PixelBorder({this.step = 3, this.steps = 2, this.lip = 0, super.side});
 
   final double step;
   final int steps;
+  final double lip;
 
   @override
-  PixelBorder copyWith({BorderSide? side}) => PixelBorder(step: step, steps: steps, side: side ?? this.side);
+  PixelBorder copyWith({BorderSide? side}) => PixelBorder(step: step, steps: steps, lip: lip, side: side ?? this.side);
 
   @override
-  EdgeInsetsGeometry get dimensions => EdgeInsets.all(side.width);
+  EdgeInsetsGeometry get dimensions => EdgeInsets.fromLTRB(side.width, side.width, side.width, side.width + lip);
 
   Path _path(Rect r) {
     final s = step;
@@ -54,6 +56,13 @@ class PixelBorder extends OutlinedBorder {
 
   @override
   void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    if (lip > 0) {
+      canvas.save();
+      canvas.clipPath(_path(rect));
+      canvas.drawRect(Rect.fromLTRB(rect.left, rect.bottom - side.width - lip, rect.right, rect.bottom),
+          Paint()..color = const Color(0x38000000));
+      canvas.restore();
+    }
     if (side.style == BorderStyle.none || side.width == 0) return;
     final paint = Paint()
       ..color = side.color
@@ -63,14 +72,22 @@ class PixelBorder extends OutlinedBorder {
   }
 
   @override
-  ShapeBorder scale(double t) => PixelBorder(step: step * t, steps: steps, side: side.scale(t));
+  ShapeBorder scale(double t) => PixelBorder(step: step * t, steps: steps, lip: lip * t, side: side.scale(t));
+
+  @override
+  ShapeBorder? lerpFrom(ShapeBorder? a, double t) =>
+      a is PixelBorder ? PixelBorder(step: step, steps: steps, lip: lip, side: BorderSide.lerp(a.side, side, t)) : super.lerpFrom(a, t);
+
+  @override
+  ShapeBorder? lerpTo(ShapeBorder? b, double t) =>
+      b is PixelBorder ? PixelBorder(step: step, steps: steps, lip: lip, side: BorderSide.lerp(side, b.side, t)) : super.lerpTo(b, t);
 
   @override
   bool operator ==(Object other) =>
-      other is PixelBorder && other.step == step && other.steps == steps && other.side == side;
+      other is PixelBorder && other.step == step && other.steps == steps && other.lip == lip && other.side == side;
 
   @override
-  int get hashCode => Object.hash(step, steps, side);
+  int get hashCode => Object.hash(step, steps, lip, side);
 }
 
 /// 계단 모서리 판. 홈과 꾸미기 화면의 묶음 상자에 쓴다.
@@ -775,6 +792,36 @@ class CoinCounter extends StatelessWidget {
                   fontFeatures: const [FontFeature.tabularFigures()],
                 )),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 도트 진행 막대. 얇은 테두리 칸 안을 [value]만큼 채운다.
+class PixelBar extends StatelessWidget {
+  const PixelBar({super.key, required this.value, this.color = JdColors.wood, this.height = 10});
+
+  final double value;
+  final Color color;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = value.clamp(0.0, 1.0).toDouble();
+    return Container(
+      height: height,
+      padding: const EdgeInsets.all(2),
+      decoration: const ShapeDecoration(
+        color: JdColors.paperDeep,
+        shape: PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.seamDark, width: 1.5)),
+      ),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: v,
+          heightFactor: 1,
+          child: ColoredBox(color: color),
         ),
       ),
     );

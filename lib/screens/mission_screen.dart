@@ -9,6 +9,7 @@ import '../models/mission.dart';
 import '../models/mission_record.dart';
 import '../services/record_repository.dart';
 import '../theme.dart';
+import '../widgets/pixel_ui.dart';
 import '../utils/format.dart';
 import '../utils/photo.dart';
 
@@ -148,7 +149,10 @@ class _MissionScreenState extends State<MissionScreen> {
               Container(
                 width: 64,
                 height: 64,
-                decoration: BoxDecoration(color: JdColors.soloTint, borderRadius: BorderRadius.circular(20)),
+                decoration: const ShapeDecoration(
+                  color: JdColors.soloTint,
+                  shape: PixelBorder(step: 4, steps: 2, side: BorderSide(color: JdColors.outline, width: 2)),
+                ),
                 child: Icon(mission.icon, size: 32, color: JdColors.solo),
               ),
               const SizedBox(width: 14),
@@ -179,18 +183,15 @@ class _MissionScreenState extends State<MissionScreen> {
             else
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-                decoration: BoxDecoration(color: JdColors.soloTint, borderRadius: BorderRadius.circular(20)),
+                decoration: const ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
                 child: Column(
                   children: [
                     _TimerDisplay(remaining: _remaining!),
                     const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: 1 - _remaining!.inSeconds / (mission.timerMinutes! * 60),
-                        minHeight: 8,
-                        backgroundColor: Colors.white,
-                      ),
+                    PixelBar(
+                      value: 1 - _remaining!.inSeconds / (mission.timerMinutes! * 60),
+                      color: JdColors.leaf,
+                      height: 12,
                     ),
                     const SizedBox(height: 10),
                     Text(
@@ -217,8 +218,8 @@ class _MissionScreenState extends State<MissionScreen> {
           else
             Row(
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                ClipPath(
+                  clipper: const ShapeBorderClipper(shape: PixelBorder(step: 3, steps: 2)),
                   child: Image.memory(base64Decode(_photo!), width: 88, height: 88, fit: BoxFit.cover),
                 ),
                 const SizedBox(width: 12),

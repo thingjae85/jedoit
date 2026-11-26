@@ -8,6 +8,7 @@ import '../models/room.dart';
 import '../services/record_repository.dart';
 import '../theme.dart';
 import '../widgets/jd_widgets.dart';
+import '../widgets/pixel_ui.dart';
 
 /// 개인 기록 목록. 기록 하나 삭제·전체 삭제는 확인창을 거친다.
 class RecordsScreen extends StatefulWidget {
@@ -282,12 +283,15 @@ class _RecordsScreenState extends State<RecordsScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        _MonthGrid(
-          month: _month,
-          today: today,
-          selected: _selected,
-          byDay: byDay,
-          onSelect: (day) => setState(() => _selected = day),
+        PixelPanel(
+          padding: const EdgeInsets.fromLTRB(8, 12, 8, 6),
+          child: _MonthGrid(
+            month: _month,
+            today: today,
+            selected: _selected,
+            byDay: byDay,
+            onSelect: (day) => setState(() => _selected = day),
+          ),
         ),
         const Divider(height: 28),
         Text('${_selected.month}월 ${_selected.day}일 (${_dowNames[_selected.weekday % 7]})',
@@ -337,7 +341,7 @@ class _ChallengeTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        customBorder: JdShapes.card,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -354,15 +358,7 @@ class _ChallengeTile extends StatelessWidget {
                     Text(period, style: const TextStyle(fontSize: 12, color: JdColors.faint)),
                     if (goal != null && goal > 0) ...[
                       const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: LinearProgressIndicator(
-                          value: (c.earned / goal).clamp(0.0, 1.0).toDouble(),
-                          minHeight: 5,
-                          backgroundColor: JdColors.panel,
-                          color: JdColors.together,
-                        ),
-                      ),
+                      PixelBar(value: c.earned / goal, color: JdColors.together),
                     ],
                   ],
                 ),
@@ -402,7 +398,7 @@ class _Stat extends StatelessWidget {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(color: JdColors.panel, borderRadius: BorderRadius.circular(16)),
+        decoration: const ShapeDecoration(color: JdColors.cream, shape: JdShapes.soft),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -506,8 +502,8 @@ class _RecordTile extends StatelessWidget {
       child: Row(
         children: [
           if (record.hasPhoto)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
+            ClipPath(
+              clipper: const ShapeBorderClipper(shape: PixelBorder(step: 2, steps: 1)),
               child: Image.memory(base64Decode(record.photo!),
                   width: 40, height: 40, fit: BoxFit.cover, gaplessPlayback: true,
                   errorBuilder: (_, __, ___) => const CheckSquare(checked: true)),

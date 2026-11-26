@@ -3,6 +3,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/room.dart';
 import '../theme.dart';
+import 'pixel_ui.dart';
 import 'jd_widgets.dart';
 
 /// 방 피드의 인증 카드. 결과 사진·동영상, 전후 넘겨 보기, 가벼운 한 줄을 한 모양으로 보여 준다.
@@ -21,11 +22,7 @@ class FeedCard extends StatelessWidget {
     final time = '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: JdColors.line, width: 1.5),
-      ),
+      decoration: const ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,7 +52,7 @@ class FeedCard extends StatelessWidget {
               width: double.infinity,
               margin: const EdgeInsets.symmetric(horizontal: 14),
               padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(color: JdColors.togetherTint, borderRadius: BorderRadius.circular(16)),
+              decoration: const ShapeDecoration(color: JdColors.togetherTint, shape: JdShapes.soft),
               child: Row(
                 children: [
                   const Icon(Icons.check_circle, color: JdColors.together),
@@ -132,9 +129,10 @@ class _ReactionButtonState extends State<ReactionButton> with SingleTickerProvid
       padding: const EdgeInsets.only(right: 6),
       child: Material(
         color: on ? JdColors.togetherChip : JdColors.panel,
-        shape: StadiumBorder(side: BorderSide(color: on ? JdColors.togetherFill : JdColors.line, width: 1.5)),
+        shape: PixelBorder(
+            step: 2, steps: 1, side: BorderSide(color: on ? JdColors.together : JdColors.seamDark, width: 1.5)),
         child: InkWell(
-          customBorder: const StadiumBorder(),
+          customBorder: const PixelBorder(step: 2, steps: 1),
           onTap: widget.onTap == null
               ? null
               : () {
@@ -187,10 +185,7 @@ class TodayCollage extends StatelessWidget {
       key: const Key('todayCollage'),
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: all ? JdColors.together : JdColors.togetherTint,
-        borderRadius: BorderRadius.circular(20),
-      ),
+      decoration: ShapeDecoration(color: all ? JdColors.together : JdColors.cream, shape: JdShapes.card),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -204,8 +199,8 @@ class TodayCollage extends StatelessWidget {
             style: TextStyle(fontSize: 13, color: all ? Colors.white70 : JdColors.subtle),
           ),
           const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+          ClipPath(
+            clipper: const ShapeBorderClipper(shape: PixelBorder(step: 3, steps: 2)),
             child: GridView.count(
               crossAxisCount: cols,
               shrinkWrap: true,
@@ -263,7 +258,7 @@ class _CollageTile extends StatelessWidget {
           bottom: 8,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
+            decoration: const ShapeDecoration(color: Colors.black54, shape: JdShapes.tag),
             child: Text(item.displayName,
                 style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
           ),
@@ -319,7 +314,7 @@ class _BeforeAfterPagerState extends State<BeforeAfterPager> {
                           top: 12,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+                            decoration: const ShapeDecoration(color: Colors.black54, shape: JdShapes.tag),
                             child: Text(label,
                                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                           ),
