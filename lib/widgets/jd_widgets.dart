@@ -4,6 +4,7 @@ import '../models/mission_record.dart';
 import '../models/room.dart';
 import '../theme.dart';
 import 'pixel_ui.dart';
+import 'skin.dart';
 
 /// 기기 시간 기준 날짜(시각 제거).
 DateTime dayOf(DateTime t) {
@@ -66,6 +67,22 @@ class CheckSquare extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (JdColors.ocean) {
+      // 바다 스킨: 다 한 칸에 물고기 도장.
+      return Container(
+        width: size,
+        height: size,
+        decoration: ShapeDecoration(
+          color: checked ? const Color(0xFFFFE3D6) : JdColors.cream,
+          shape: PixelBorder(
+              step: size / 8,
+              steps: 1,
+              side: BorderSide(color: checked ? SeaArt.coralDeep : JdColors.edgeStrong, width: 1.5)),
+        ),
+        alignment: Alignment.center,
+        child: checked ? SeaFish(size: size * 0.42) : null,
+      );
+    }
     return Container(
       width: size,
       height: size,

@@ -15,6 +15,7 @@ import '../utils/format.dart';
 import '../widgets/jd_widgets.dart';
 import '../widgets/pixel_ui.dart';
 import '../widgets/room_feed.dart';
+import '../widgets/skin.dart';
 import 'chat_screen.dart';
 import 'checkin_screen.dart';
 import 'room_entry_screen.dart';
@@ -384,19 +385,16 @@ class _RoomScreenState extends State<RoomScreen> {
                   ? TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('방 정보를 다시 불러오기'))
                   : const CircularProgressIndicator(),
             )
-          : RefreshIndicator(onRefresh: _load, child: _body(context, summary)),
+          : SeaBackdrop(child: RefreshIndicator(onRefresh: _load, child: _body(context, summary))),
       bottomNavigationBar: summary?.statusAt(widget.now()) == RoomStatus.active
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: JdColors.together,
-                    minimumSize: const Size.fromHeight(56),
-                  ),
+                child: SkinPrimaryButton(
+                  color: JdColors.together,
                   onPressed: _busy ? null : _openCheckIn,
-                  icon: const Icon(Icons.photo_camera_outlined),
-                  label: const Text('오늘 인증하기'),
+                  icon: Icons.photo_camera_outlined,
+                  label: '오늘 인증하기',
                 ),
               ),
             )
@@ -413,6 +411,7 @@ class _RoomScreenState extends State<RoomScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
+        if (JdColors.ocean) ...[const SeaWaves(), const SizedBox(height: 12)],
         Text(roomStatusTitle(status),
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
         const SizedBox(height: 4),
@@ -734,7 +733,10 @@ class _ProgressCard extends StatelessWidget {
           Row(
             children: [
               Text('함께 진행도',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: JdColors.ocean ? JdColors.woodText : JdColors.togetherText)),
               const Spacer(),
               Text('목표 $goal회', style: TextStyle(fontSize: 13, color: JdColors.subtle)),
             ],
@@ -742,6 +744,9 @@ class _ProgressCard extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
+              if (JdColors.ocean)
+                SeaTank(value: ratio, label: '${(ratio * 100).round()}%', size: const Size(124, 108))
+              else
               SizedBox(
                 width: 112,
                 height: 112,

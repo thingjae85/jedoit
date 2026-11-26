@@ -4,6 +4,9 @@ import 'package:jeoduit/app.dart';
 import 'package:jeoduit/models/mission.dart';
 import 'package:jeoduit/models/mission_record.dart';
 import 'package:jeoduit/services/record_repository.dart';
+import 'package:jeoduit/services/skin_store.dart';
+import 'package:jeoduit/theme.dart';
+import 'package:jeoduit/widgets/skin.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 MissionRecord _record(String id, String missionId, DateTime completedAt,
@@ -326,6 +329,34 @@ void main() {
     expect(find.text('저장하지 못했어요. 잠시 후 다시 시도해 주세요'), findsOneWidget);
     expect(find.text('아침에 실천'), findsOneWidget);
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '했어요')).onPressed, isNotNull);
+  });
+  testWidgets('마이 탭에서 바다 상어 테마를 고르면 바로 바뀌고 기기에 저장된다', (tester) async {
+    _useTallScreen(tester);
+    SeaMotion.enabled = false;
+    addTearDown(() {
+      JdColors.use(JdSkin.wood);
+      SeaMotion.enabled = true;
+    });
+    await tester.pumpWidget(JeoduitApp(repository: LocalRecordRepository(), missionsFor: _fixed));
+    await tester.pumpAndSettle();
+    expect(find.byType(SeaTabIcon), findsNothing);
+
+    await tester.tap(find.text('마이'));
+    await tester.pumpAndSettle();
+    expect(find.text('테마'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('skin-ocean')));
+    await tester.pumpAndSettle();
+
+    expect(JdColors.skin, JdSkin.ocean);
+    expect(find.byType(SeaTabIcon), findsNWidgets(4));
+    expect(await const SkinStore().load(), JdSkin.ocean);
+
+    // 다시 기본으로 돌아갈 수 있다.
+    await tester.tap(find.byKey(const Key('skin-wood')));
+    await tester.pumpAndSettle();
+    expect(JdColors.skin, JdSkin.wood);
+    expect(find.byType(SeaTabIcon), findsNothing);
+    expect(await const SkinStore().load(), JdSkin.wood);
   });
 }
 

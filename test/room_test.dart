@@ -17,6 +17,8 @@ import 'package:jeoduit/services/room_service.dart';
 import 'package:jeoduit/utils/photo.dart';
 import 'package:jeoduit/utils/video.dart';
 import 'package:jeoduit/widgets/room_feed.dart';
+import 'package:jeoduit/theme.dart';
+import 'package:jeoduit/widgets/skin.dart';
 import 'package:jeoduit/widgets/desk_view.dart';
 
 final _now = DateTime.utc(2026, 11, 11, 3); // 11/11 12:00 KST
@@ -350,6 +352,32 @@ void main() {
     expect(find.textContaining('참가자가 나가서'), findsOneWidget);
 
     expect(find.text('오늘 인증하기'), findsOneWidget);
+  });
+
+  testWidgets('바다 스킨: 진행도는 물이 차는 수조, 인증하기는 유리관 버튼으로 보인다', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    JdColors.use(JdSkin.ocean);
+    SeaMotion.enabled = false;
+    addTearDown(() {
+      JdColors.use(JdSkin.wood);
+      SeaMotion.enabled = true;
+    });
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 3, active: 2, n0: 2, goal: 4, total: 6);
+
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
+    await tester.pumpAndSettle();
+    expect(find.byType(SeaTank), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('3 / 4'), findsOneWidget);
+
+    final tube = find.widgetWithText(SeaTubeButton, '오늘 인증하기');
+    expect(tube, findsOneWidget);
+    await tester.tap(tube);
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckInScreen), findsOneWidget);
   });
 
   testWidgets('인증 화면: 사진·완료 체크가 있어야 저장되고 압축한 JPEG을 올린다', (tester) async {

@@ -821,7 +821,19 @@ class PixelBar extends StatelessWidget {
         child: FractionallySizedBox(
           widthFactor: v,
           heightFactor: 1,
-          child: ColoredBox(color: color ?? JdColors.wood),
+          // 바다 스킨: 물빛으로 채우고 위에 물마루 한 줄.
+          child: JdColors.ocean
+              ? const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: [0, 0.3, 0.3, 1],
+                      colors: [Color(0xFFE9FAFD), Color(0xFFE9FAFD), Color(0xFF5BB8CF), Color(0xFF3896B2)],
+                    ),
+                  ),
+                )
+              : ColoredBox(color: color ?? JdColors.wood),
         ),
       ),
     );

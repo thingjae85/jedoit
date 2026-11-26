@@ -163,7 +163,9 @@ class _RecordsScreenState extends State<RecordsScreen> {
     final records = _records;
     final body = _showChallenges ? _challengeList() : _missionBody(records);
     return Scaffold(
+      backgroundColor: JdColors.ocean ? Colors.transparent : null,
       appBar: AppBar(
+        backgroundColor: JdColors.ocean ? Colors.transparent : null,
         title: const Text('내 기록'),
         actions: [
           if (!_showChallenges && records != null && records.isNotEmpty)

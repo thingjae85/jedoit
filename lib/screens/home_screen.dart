@@ -21,6 +21,7 @@ import '../utils/format.dart';
 import '../utils/photo.dart';
 import '../widgets/jd_widgets.dart';
 import '../widgets/pixel_ui.dart';
+import '../widgets/skin.dart';
 import '../widgets/space_view.dart';
 import 'decor_screen.dart';
 import 'mission_screen.dart';
@@ -672,11 +673,22 @@ class _HomeScreenState extends State<HomeScreen> {
           onDelete: _requestDeletion),
     };
     return Scaffold(
-      body: body,
+      body: SeaBackdrop(child: body),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: _selectTab,
-        destinations: const [
+        destinations: JdColors.ocean
+            ? const [
+                NavigationDestination(
+                    icon: SeaTabIcon(index: 0), selectedIcon: SeaTabIcon(index: 0, selected: true), label: '홈'),
+                NavigationDestination(
+                    icon: SeaTabIcon(index: 1), selectedIcon: SeaTabIcon(index: 1, selected: true), label: '챌린지'),
+                NavigationDestination(
+                    icon: SeaTabIcon(index: 2), selectedIcon: SeaTabIcon(index: 2, selected: true), label: '기록'),
+                NavigationDestination(
+                    icon: SeaTabIcon(index: 3), selectedIcon: SeaTabIcon(index: 3, selected: true), label: '마이'),
+              ]
+            : const [
           NavigationDestination(
               icon: Icon(Icons.check_box_outlined),
               selectedIcon: Icon(Icons.check_box),
@@ -734,6 +746,7 @@ class _HomeScreenState extends State<HomeScreen> {
               CoinCounter(coins: _prefs.decor.available(state.coins), textKey: const Key('coins')),
             ],
           ),
+          if (JdColors.ocean) ...[const SizedBox(height: 10), const SeaWaves()],
           const SizedBox(height: 14),
           if (away >= 2) ...[
             _WelcomeBack(daysAway: away, buddy: buddy),
@@ -855,6 +868,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 4),
           Text('혼자 하기 힘든 날엔 친구랑 같이 해 봐요. 원할 때만 써도 괜찮아요.',
               style: TextStyle(fontSize: 13, color: JdColors.subtle)),
+          if (JdColors.ocean) ...[const SizedBox(height: 12), const SeaWaves()],
           const SizedBox(height: 16),
           if (!available)
             const Card(
@@ -1871,11 +1885,17 @@ class _MyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final account = this.account;
+    final scope = JdSkinScope.maybeOf(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('마이')),
+      backgroundColor: JdColors.ocean ? Colors.transparent : null,
+      appBar: AppBar(title: const Text('마이'), backgroundColor: JdColors.ocean ? Colors.transparent : null),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
+          if (scope != null) ...[
+            _SkinPicker(current: scope.skin, onPick: scope.onChange),
+            const SizedBox(height: 20),
+          ],
           if (account == null)
             const Card(
               child: Padding(
@@ -1898,6 +1918,129 @@ class _MyPage extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodySmall),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// 마이 탭 테마 고르기. 고르면 바로 앱 전체 모양이 바뀌고 이 기기에 저장된다.
+class _SkinPicker extends StatelessWidget {
+  const _SkinPicker({required this.current, required this.onPick});
+
+  final JdSkin current;
+  final ValueChanged<JdSkin> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('테마', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: JdColors.ink)),
+        const SizedBox(height: 4),
+        Text('고르면 바로 바뀌고, 이 기기에 저장돼요.', style: TextStyle(fontSize: 13, color: JdColors.subtle)),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            for (final skin in JdSkin.values) ...[
+              if (skin != JdSkin.values.first) const SizedBox(width: 12),
+              Expanded(child: _SkinOption(skin: skin, selected: skin == current, onTap: () => onPick(skin))),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SkinOption extends StatelessWidget {
+  const _SkinOption({required this.skin, required this.selected, required this.onTap});
+
+  final JdSkin skin;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = skin == JdSkin.ocean ? JdPalette.oceanSkin : JdPalette.woodSkin;
+    final shape = PixelBorder(
+        step: 3, steps: 2, side: BorderSide(color: selected ? JdColors.woodText : JdColors.edge, width: selected ? 2.5 : 1.5));
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: '${skin.label} 테마',
+      excludeSemantics: true,
+      child: Material(
+        key: Key('skin-${skin.name}'),
+        color: JdColors.cream,
+        shape: shape,
+        child: InkWell(
+          customBorder: shape,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 그 스킨의 바탕·판·버튼을 작게 보여 준다.
+                Container(
+                  height: 72,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: skin == JdSkin.ocean
+                          ? const [Color(0xFFEAF6F8), Color(0xFFC4E4EB)]
+                          : [p.paper, p.paperDeep],
+                    ),
+                    border: Border.all(color: p.edge, width: 1.5),
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  child: Stack(
+                    children: [
+                      Align(
+                        alignment: Alignment.topLeft,
+                        child: skin == JdSkin.ocean
+                            ? const SeaShark(size: 20)
+                            : const PixelCoin(size: 20),
+                      ),
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Container(
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: skin == JdSkin.ocean ? null : p.together,
+                            gradient: skin == JdSkin.ocean
+                                ? const LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    stops: [0, 0.45, 0.45, 1],
+                                    colors: [Color(0xFFE9F7FA), Color(0xFFE9F7FA), Color(0xFF7CCBDD), Color(0xFF3896B2)],
+                                  )
+                                : null,
+                            border: Border.all(
+                                color: skin == JdSkin.ocean ? const Color(0xFF4E93A6) : p.edgeStrong, width: 1.5),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(skin.label,
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: JdColors.ink)),
+                    ),
+                    if (selected) Icon(Icons.check_circle, size: 18, color: JdColors.woodText),
+                  ],
+                ),
+                Text(skin.description, style: TextStyle(fontSize: 12, color: JdColors.subtle)),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

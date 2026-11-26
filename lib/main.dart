@@ -6,6 +6,8 @@ import 'config.dart';
 import 'services/account_service.dart';
 import 'services/draft_store.dart';
 import 'services/room_service.dart';
+import 'services/skin_store.dart';
+import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,5 +22,6 @@ Future<void> main() async {
   } catch (_) {
     // 서버에 연결하지 못해도 개인 체험은 이 기기에 기록할 수 있게 한다.
   }
+  JdColors.use(await const SkinStore().load());
   runApp(JeoduitApp(account: account, rooms: rooms, drafts: drafts));
 }
