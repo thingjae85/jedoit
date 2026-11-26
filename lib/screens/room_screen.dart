@@ -15,6 +15,7 @@ import '../utils/format.dart';
 import '../widgets/jd_widgets.dart';
 import '../widgets/pixel_ui.dart';
 import '../widgets/room_feed.dart';
+import '../widgets/skin.dart';
 import 'chat_screen.dart';
 import 'checkin_screen.dart';
 import 'room_entry_screen.dart';
@@ -384,19 +385,16 @@ class _RoomScreenState extends State<RoomScreen> {
                   ? TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('방 정보를 다시 불러오기'))
                   : const CircularProgressIndicator(),
             )
-          : RefreshIndicator(onRefresh: _load, child: _body(context, summary)),
+          : SeaBackdrop(child: RefreshIndicator(onRefresh: _load, child: _body(context, summary))),
       bottomNavigationBar: summary?.statusAt(widget.now()) == RoomStatus.active
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: JdColors.together,
-                    minimumSize: const Size.fromHeight(56),
-                  ),
+                child: SkinPrimaryButton(
+                  color: JdColors.together,
                   onPressed: _busy ? null : _openCheckIn,
-                  icon: const Icon(Icons.photo_camera_outlined),
-                  label: const Text('오늘 인증하기'),
+                  icon: Icons.photo_camera_outlined,
+                  label: '오늘 인증하기',
                 ),
               ),
             )
@@ -413,10 +411,11 @@ class _RoomScreenState extends State<RoomScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
+        if (JdColors.ocean) ...[const SeaWaves(), const SizedBox(height: 12)],
         Text(roomStatusTitle(status),
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
         const SizedBox(height: 4),
-        Text(_statusDetail(s, status), style: const TextStyle(fontSize: 14, color: JdColors.subtle)),
+        Text(_statusDetail(s, status), style: TextStyle(fontSize: 14, color: JdColors.subtle)),
         const SizedBox(height: 18),
         if (_chatOpen(s)) ...[
           _ChatEntry(memberCount: _members.length, unread: _unread, onTap: _openChat),
@@ -432,9 +431,9 @@ class _RoomScreenState extends State<RoomScreen> {
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: const ShapeDecoration(color: JdColors.togetherChip, shape: JdShapes.tag),
+                decoration: ShapeDecoration(color: JdColors.togetherChip, shape: JdShapes.tag),
                 child: Text(s.checkinMode.label,
-                    style: const TextStyle(fontSize: 12, color: JdColors.togetherText, fontWeight: FontWeight.w700)),
+                    style: TextStyle(fontSize: 12, color: JdColors.togetherText, fontWeight: FontWeight.w700)),
               ),
             ],
           ),
@@ -442,8 +441,8 @@ class _RoomScreenState extends State<RoomScreen> {
           if (status == RoomStatus.active && _todayFeed().isNotEmpty)
             TodayCollage(items: _todayFeed(), memberCount: _members.length, avatarIndexOf: _avatarIndexOf),
           if (_feed.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text('아직 인증이 없어요. 첫 인증을 올려 보세요!', style: TextStyle(color: JdColors.faint)),
             ),
           for (final item in _feed)
@@ -473,7 +472,7 @@ class _RoomScreenState extends State<RoomScreen> {
                             style: TextStyle(fontSize: 15, color: c.valid ? JdColors.ink : JdColors.faint)),
                         Text(
                           c.valid ? (c.hasPhoto ? '사진 있음' : '사진 삭제됨 · 완료 체크 유지') : '쌓인 진행도는 남아 있어요',
-                          style: const TextStyle(fontSize: 12, color: JdColors.faint),
+                          style: TextStyle(fontSize: 12, color: JdColors.faint),
                         ),
                       ],
                     ),
@@ -496,7 +495,7 @@ class _RoomScreenState extends State<RoomScreen> {
           children: [
             Text('참가자 ${_members.length}명', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             const Spacer(),
-            if (showChecks) Text('${s.days}일 인증', style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+            if (showChecks) Text('${s.days}일 인증', style: TextStyle(fontSize: 12, color: JdColors.faint)),
           ],
         ),
         const SizedBox(height: 8),
@@ -514,14 +513,14 @@ class _RoomScreenState extends State<RoomScreen> {
                       Text('${m.displayName}${m.isMe ? ' (나)' : ''}', style: const TextStyle(fontSize: 15)),
                       Text(
                         '${m.isHost ? '방장' : '참가자'}${showChecks ? ' · 인증 ${m.checkins}회' : ''}',
-                        style: const TextStyle(fontSize: 12, color: JdColors.faint),
+                        style: TextStyle(fontSize: 12, color: JdColors.faint),
                       ),
                     ],
                   ),
                 ),
                 if (showChecks && s.days > 7)
                   Text('${m.checkins} / ${s.days}',
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: JdColors.togetherText))
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: JdColors.togetherText))
                 else if (showChecks)
                   for (var d = 0; d < s.days; d++) ...[
                     SizedBox(width: s.days > 3 ? 3 : 6),
@@ -554,7 +553,7 @@ class _RoomScreenState extends State<RoomScreen> {
         if (status != RoomStatus.finished && me != null)
           TextButton(
             onPressed: _busy ? null : _leave,
-            child: const Text('방 나가기', style: TextStyle(color: JdColors.subtle)),
+            child: Text('방 나가기', style: TextStyle(color: JdColors.subtle)),
           ),
       ],
     );
@@ -612,7 +611,7 @@ class _ChatEntry extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
-              const Icon(Icons.forum_outlined, color: JdColors.together),
+              Icon(Icons.forum_outlined, color: JdColors.together),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -641,7 +640,7 @@ class _ChatEntry extends StatelessWidget {
                   child: Text(unread > 99 ? '99+' : '$unread',
                       style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
                 ),
-              const Icon(Icons.chevron_right, color: JdColors.faint),
+              Icon(Icons.chevron_right, color: JdColors.faint),
             ],
           ),
         ),
@@ -660,17 +659,17 @@ class _InviteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: const ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
+      decoration: ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
       child: Column(
         children: [
-          const CategoryChip.together(label: '친구 초대'),
+          CategoryChip.together(label: '친구 초대'),
           const SizedBox(height: 12),
           const Text('친구가 카메라로 찍으면 바로 참가 화면이 열려요',
               textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Color(0xFF4A5056))),
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: const ShapeDecoration(color: Colors.white, shape: JdShapes.soft),
+            decoration: ShapeDecoration(color: Colors.white, shape: JdShapes.soft),
             child: QrImageView(key: const Key('inviteQr'), data: link, size: 190),
           ),
           const SizedBox(height: 14),
@@ -733,15 +732,21 @@ class _ProgressCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text('함께 진행도',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
+              Text('함께 진행도',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: JdColors.ocean ? JdColors.woodText : JdColors.togetherText)),
               const Spacer(),
-              Text('목표 $goal회', style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+              Text('목표 $goal회', style: TextStyle(fontSize: 13, color: JdColors.subtle)),
             ],
           ),
           const SizedBox(height: 14),
           Row(
             children: [
+              if (JdColors.ocean)
+                SeaTank(value: ratio, label: '${(ratio * 100).round()}%', size: const Size(124, 108))
+              else
               SizedBox(
                 width: 112,
                 height: 112,
@@ -784,7 +789,7 @@ class _ProgressCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text('모두 매일 하면 ${s.totalElements}회까지 채울 수 있어요',
-                        style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                        style: TextStyle(fontSize: 12, color: JdColors.faint)),
                   ],
                 ),
               ),
@@ -847,7 +852,7 @@ class _DayGrid extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('모두 인증한 날 $allDays일 · ${(todayIndex + 1).clamp(0, perDay.length)}일째 진행 중',
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.togetherText)),
         const SizedBox(height: 8),
         GridView.count(
           key: const Key('dayGrid'),

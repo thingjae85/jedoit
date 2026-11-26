@@ -275,7 +275,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       );
 
   List<Widget> _light() => [
-        const Text('사진 없이 오늘 한 일을 한 줄로 남겨요. 방 친구들 피드에 바로 보여요.',
+        Text('사진 없이 오늘 한 일을 한 줄로 남겨요. 방 친구들 피드에 바로 보여요.',
             style: TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 16),
         _noteField(_note, '오늘의 한 줄', hint: _tidy ? '예: 책상 왼쪽 서랍 정리 끝!' : '예: 오늘은 조금 더 했어요!'),
@@ -284,7 +284,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       ];
 
   List<Widget> _result() => [
-        const Text('다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요.',
+        Text('다 한 뒤 사진 한 장이나 5초 미만 동영상을 올려 주세요.',
             style: TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 12),
         if (_photo != null) _photoPreview(_photo!),
@@ -297,7 +297,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.videocam, color: JdColors.together),
+                Icon(Icons.videocam, color: JdColors.together),
                 const SizedBox(width: 8),
                 Text('동영상 ${_video!.seconds.toStringAsFixed(1)}초 선택됨',
                     style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -344,7 +344,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
 
   List<Widget> _before() => [
         Text(_tidy ? '정리를 시작하기 전에 지금 모습을 찍어 두세요. 끝나면 후 사진을 올려 나란히 보여 줘요.' : '시작하기 전에 한 장 찍어 두세요. 다 하면 후 사진을 올려 나란히 보여 줘요.',
-            style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
+            style: TextStyle(fontSize: 15, color: JdColors.subtle)),
         const SizedBox(height: 12),
         if (_beforePhoto != null) _photoPreview(_beforePhoto!, label: '전'),
         OutlinedButton.icon(
@@ -366,7 +366,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   List<Widget> _after() {
     final before = _savedBefore!;
     return [
-      Text(_tidy ? '정리를 마쳤으면 같은 자리를 다시 찍어 주세요.' : '다 했으면 한 장 더 찍어 주세요.', style: const TextStyle(fontSize: 15, color: JdColors.subtle)),
+      Text(_tidy ? '정리를 마쳤으면 같은 자리를 다시 찍어 주세요.' : '다 했으면 한 장 더 찍어 주세요.', style: TextStyle(fontSize: 15, color: JdColors.subtle)),
       const SizedBox(height: 12),
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -384,7 +384,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       ),
       TextButton(
         onPressed: _busy ? null : () => setState(() => _savedBefore = null),
-        child: const Text('전 사진 다시 올리기', style: TextStyle(color: JdColors.subtle)),
+        child: Text('전 사진 다시 올리기', style: TextStyle(color: JdColors.subtle)),
       ),
       _noteField(_note, '후 한 줄 (선택)', hint: '예: 서랍이 닫혀요!'),
       _doneCheck(),
@@ -437,7 +437,7 @@ class _Blank extends StatelessWidget {
   const _Blank();
 
   @override
-  Widget build(BuildContext context) => const ColoredBox(
+  Widget build(BuildContext context) => ColoredBox(
         color: JdColors.empty,
         child: Center(child: Icon(Icons.image_outlined, color: JdColors.faint)),
       );

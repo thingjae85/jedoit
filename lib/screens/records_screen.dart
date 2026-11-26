@@ -9,6 +9,7 @@ import '../services/record_repository.dart';
 import '../theme.dart';
 import '../widgets/jd_widgets.dart';
 import '../widgets/pixel_ui.dart';
+import '../widgets/skin.dart';
 
 /// 개인 기록 목록. 기록 하나 삭제·전체 삭제는 확인창을 거친다.
 class RecordsScreen extends StatefulWidget {
@@ -163,7 +164,9 @@ class _RecordsScreenState extends State<RecordsScreen> {
     final records = _records;
     final body = _showChallenges ? _challengeList() : _missionBody(records);
     return Scaffold(
+      backgroundColor: JdColors.ocean ? Colors.transparent : null,
       appBar: AppBar(
+        backgroundColor: JdColors.ocean ? Colors.transparent : null,
         title: const Text('내 기록'),
         actions: [
           if (!_showChallenges && records != null && records.isNotEmpty)
@@ -208,15 +211,18 @@ class _RecordsScreenState extends State<RecordsScreen> {
               ? Center(child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.spa_outlined, size: 56, color: JdColors.solo),
+                    if (JdColors.ocean)
+                      const SeaCrabReader()
+                    else
+                      Icon(Icons.spa_outlined, size: 56, color: JdColors.solo),
                     const SizedBox(height: 16),
                     const Text('아직 기록이 없어요', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 8),
                     const Text('미션 하나를 완료하고 첫 기록을 남겨 보세요.'),
                     const SizedBox(height: 16),
-                    FilledButton(
+                    SkinPrimaryButton(
                       onPressed: widget.onPickMission ?? () => Navigator.of(context).pop(),
-                      child: const Text('미션 고르기'),
+                      label: '미션 고르기',
                     ),
                   ]),
                 ))
@@ -234,11 +240,17 @@ class _RecordsScreenState extends State<RecordsScreen> {
     }
     if (list == null) return const Center(child: CircularProgressIndicator());
     if (list.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('아직 함께한 챌린지가 없어요.\n챌린지 탭에서 친구와 시작해 보세요.',
-              textAlign: TextAlign.center, style: TextStyle(color: JdColors.subtle)),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (JdColors.ocean) ...[const SeaEmptyArt(), const SizedBox(height: 16)],
+              Text('아직 함께한 챌린지가 없어요.\n챌린지 탭에서 친구와 시작해 보세요.',
+                  textAlign: TextAlign.center, style: TextStyle(color: JdColors.subtle)),
+            ],
+          ),
         ),
       );
     }
@@ -298,8 +310,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         if (dayRecords.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
             child: Text('이날은 기록이 없어요.', style: TextStyle(color: JdColors.subtle)),
           ),
         for (final r in dayRecords)
@@ -355,7 +367,7 @@ class _ChallengeTile extends StatelessWidget {
                     Text('${c.round > 1 ? '${c.round}회차 · ' : ''}${c.challengeName}',
                         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 2),
-                    Text(period, style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                    Text(period, style: TextStyle(fontSize: 12, color: JdColors.faint)),
                     if (goal != null && goal > 0) ...[
                       const SizedBox(height: 8),
                       PixelBar(value: c.earned / goal, color: JdColors.together),
@@ -375,10 +387,10 @@ class _ChallengeTile extends StatelessWidget {
                               ? JdColors.leaf
                               : JdColors.subtle)),
                   if (goal != null && goal > 0)
-                    Text('${c.earned}/$goal회', style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                    Text('${c.earned}/$goal회', style: TextStyle(fontSize: 12, color: JdColors.faint)),
                 ],
               ),
-              const Icon(Icons.chevron_right, color: JdColors.faint),
+              Icon(Icons.chevron_right, color: JdColors.faint),
             ],
           ),
         ),
@@ -398,11 +410,11 @@ class _Stat extends StatelessWidget {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: const ShapeDecoration(color: JdColors.cream, shape: JdShapes.soft),
+        decoration: ShapeDecoration(color: JdColors.cream, shape: JdShapes.soft),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(fontSize: 12, color: JdColors.subtle)),
+            Text(label, style: TextStyle(fontSize: 12, color: JdColors.subtle)),
             const SizedBox(height: 2),
             Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           ],
@@ -443,7 +455,7 @@ class _MonthGrid extends StatelessWidget {
       children: [
         Row(children: [
           for (final w in _dowNames)
-            Expanded(child: Center(child: Text(w, style: const TextStyle(fontSize: 12, color: JdColors.faint)))),
+            Expanded(child: Center(child: Text(w, style: TextStyle(fontSize: 12, color: JdColors.faint)))),
         ]),
         const SizedBox(height: 6),
         for (var row = 0; row < cells.length ~/ 7; row++)
@@ -524,12 +536,12 @@ class _RecordTile extends StatelessWidget {
               children: [
                 Text(title, style: const TextStyle(fontSize: 15)),
                 if (record.memo.isNotEmpty)
-                  Text(record.memo, style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                  Text(record.memo, style: TextStyle(fontSize: 12, color: JdColors.faint)),
               ],
             ),
           ),
           Text('${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-              style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+              style: TextStyle(fontSize: 12, color: JdColors.faint)),
           IconButton(
             tooltip: '삭제',
             icon: const Icon(Icons.delete_outline, size: 20),
@@ -578,10 +590,10 @@ Future<void> _showPhoto(BuildContext context, MissionRecord record) {
                       Text(recordTitle(record), style: gameText(size: 16)),
                       const SizedBox(height: 2),
                       Text('${t.year}.${t.month}.${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
-                          style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                          style: TextStyle(fontSize: 12, color: JdColors.faint)),
                       if (record.memo.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        Text(record.memo, style: const TextStyle(fontSize: 14, color: JdColors.ink)),
+                        Text(record.memo, style: TextStyle(fontSize: 14, color: JdColors.ink)),
                       ],
                     ],
                   ),

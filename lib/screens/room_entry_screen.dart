@@ -5,6 +5,7 @@ import '../services/room_service.dart';
 import '../theme.dart';
 import '../widgets/jd_widgets.dart';
 import '../widgets/pixel_ui.dart';
+import '../widgets/skin.dart';
 
 /// 방 만들기 또는 초대 코드로 참가하기. 방 전용 닉네임(2~10자)을 함께 받는다.
 /// 성공하면 방 ID를 반환하며 닫힌다.
@@ -168,9 +169,11 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-        children: _joining ? _joinChildren() : _createChildren(),
+      body: SeaBackdrop(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+          children: _joining ? _joinChildren() : _createChildren(),
+        ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
@@ -186,11 +189,14 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 13)),
                 ),
-              FilledButton(
-                style: _joining ? null : FilledButton.styleFrom(backgroundColor: JdColors.together),
-                onPressed: _canSubmit ? _submit : null,
-                child: Text(_submitLabel),
-              ),
+              if (JdColors.ocean)
+                SeaTubeButton(onPressed: _canSubmit ? _submit : null, label: _submitLabel)
+              else
+                FilledButton(
+                  style: _joining ? null : FilledButton.styleFrom(backgroundColor: JdColors.together),
+                  onPressed: _canSubmit ? _submit : null,
+                  child: Text(_submitLabel),
+                ),
             ],
           ),
         ),
@@ -248,7 +254,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
       const _Step(title: '며칠 동안 할까요?'),
       Container(
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-        decoration: const ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
+        decoration: ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
         child: Column(
           children: [
             Row(
@@ -289,8 +295,8 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
         ),
       ),
       const SizedBox(height: 4),
-      const Padding(
-        padding: EdgeInsets.only(left: 4),
+      Padding(
+        padding: const EdgeInsets.only(left: 4),
         child: Text('1일부터 60일까지 정할 수 있어요', style: TextStyle(fontSize: 12, color: JdColors.subtle)),
       ),
       const SizedBox(height: 18),
@@ -315,7 +321,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
       ),
       Padding(
         padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-        child: Text(_mode.description, style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+        child: Text(_mode.description, style: TextStyle(fontSize: 13, color: JdColors.subtle)),
       ),
       const SizedBox(height: 22),
       _nicknameField(),
@@ -468,7 +474,7 @@ class _PreviewCard extends StatelessWidget {
               Container(
                 width: 44,
                 height: 44,
-                decoration: const ShapeDecoration(color: JdColors.togetherChip, shape: JdShapes.soft),
+                decoration: ShapeDecoration(color: JdColors.togetherChip, shape: JdShapes.soft),
                 child: Icon(icon, color: JdColors.together),
               ),
               const SizedBox(width: 12),
@@ -478,7 +484,7 @@ class _PreviewCard extends StatelessWidget {
               if (badge != null)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: const ShapeDecoration(color: JdColors.woodLight, shape: JdShapes.tag),
+                  decoration: ShapeDecoration(color: JdColors.woodLight, shape: JdShapes.tag),
                   child: Text(badge!, style: gameText(size: 12, color: JdColors.woodText)),
                 ),
             ],
@@ -487,12 +493,13 @@ class _PreviewCard extends StatelessWidget {
           for (final l in lines)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text(l, style: const TextStyle(fontSize: 13, color: JdColors.subtle)),
+              child: Text(l, style: TextStyle(fontSize: 13, color: JdColors.subtle)),
             ),
           if (note != null) ...[
             const SizedBox(height: 10),
-            Text(note!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.woodText)),
+            Text(note!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: JdColors.woodText)),
           ],
+          if (JdColors.ocean) ...[const SizedBox(height: 12), const SeaStrip()],
         ],
       ),
     );

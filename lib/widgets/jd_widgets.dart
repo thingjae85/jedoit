@@ -4,6 +4,7 @@ import '../models/mission_record.dart';
 import '../models/room.dart';
 import '../theme.dart';
 import 'pixel_ui.dart';
+import 'skin.dart';
 
 /// 기기 시간 기준 날짜(시각 제거).
 DateTime dayOf(DateTime t) {
@@ -24,12 +25,12 @@ Map<DateTime, List<MissionRecord>> recordsByDay(Iterable<MissionRecord> records)
 class CategoryChip extends StatelessWidget {
   const CategoryChip({super.key, required this.label, required this.dot, required this.background, required this.foreground});
 
-  const CategoryChip.solo({super.key, required this.label})
+  CategoryChip.solo({super.key, required this.label})
       : dot = JdColors.solo,
         background = JdColors.soloTint,
         foreground = JdColors.soloText;
 
-  const CategoryChip.together({super.key, required this.label})
+  CategoryChip.together({super.key, required this.label})
       : dot = JdColors.togetherFill,
         background = JdColors.togetherChip,
         foreground = JdColors.togetherText;
@@ -58,23 +59,39 @@ class CategoryChip extends StatelessWidget {
 
 /// 둥근 네모 체크 표시(누르는 동작 없음).
 class CheckSquare extends StatelessWidget {
-  const CheckSquare({super.key, required this.checked, this.color = JdColors.solo, this.size = 24});
+  const CheckSquare({super.key, required this.checked, this.color, this.size = 24});
 
   final bool checked;
-  final Color color;
+  final Color? color;
   final double size;
 
   @override
   Widget build(BuildContext context) {
+    if (JdColors.ocean) {
+      // 바다 스킨: 다 한 칸에 물고기 도장.
+      return Container(
+        width: size,
+        height: size,
+        decoration: ShapeDecoration(
+          color: checked ? const Color(0xFFFFE3D6) : JdColors.cream,
+          shape: PixelBorder(
+              step: size / 8,
+              steps: 1,
+              side: BorderSide(color: checked ? SeaArt.coralDeep : JdColors.edgeStrong, width: 1.5)),
+        ),
+        alignment: Alignment.center,
+        child: checked ? SeaFish(size: size * 0.42) : null,
+      );
+    }
     return Container(
       width: size,
       height: size,
       decoration: ShapeDecoration(
-        color: checked ? color : JdColors.cream,
+        color: checked ? (color ?? JdColors.solo) : JdColors.cream,
         shape: PixelBorder(
             step: size / 8,
             steps: 1,
-            side: const BorderSide(color: JdColors.edgeStrong, width: 1.5)),
+            side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
       ),
       child: checked ? Icon(Icons.check_rounded, size: size * 0.7, color: Colors.white) : null,
     );
@@ -128,7 +145,7 @@ class DayBlob extends StatelessWidget {
         shape: PixelBorder(
             step: size / 10,
             steps: 1,
-            side: outlined ? const BorderSide(color: JdColors.edgeStrong, width: 1.5) : BorderSide.none),
+            side: outlined ? BorderSide(color: JdColors.edgeStrong, width: 1.5) : BorderSide.none),
       ),
       child: full && !future
           ? Icon(Icons.check_rounded, size: size * 0.55, color: fg)

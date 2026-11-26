@@ -22,7 +22,7 @@ class FeedCard extends StatelessWidget {
     final time = '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: const ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
+      decoration: ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -37,7 +37,7 @@ class FeedCard extends StatelessWidget {
                   child: Text('${item.displayName}${item.isMe ? ' (나)' : ''}',
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                 ),
-                Text(time, style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                Text(time, style: TextStyle(fontSize: 12, color: JdColors.faint)),
               ],
             ),
           ),
@@ -52,10 +52,10 @@ class FeedCard extends StatelessWidget {
               width: double.infinity,
               margin: const EdgeInsets.symmetric(horizontal: 14),
               padding: const EdgeInsets.all(18),
-              decoration: const ShapeDecoration(color: JdColors.togetherTint, shape: JdShapes.soft),
+              decoration: ShapeDecoration(color: JdColors.togetherTint, shape: JdShapes.soft),
               child: Row(
                 children: [
-                  const Icon(Icons.check_circle, color: JdColors.together),
+                  Icon(Icons.check_circle, color: JdColors.together),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(item.note ?? '했어요',
@@ -70,8 +70,8 @@ class FeedCard extends StatelessWidget {
               child: Text(item.note!, style: const TextStyle(fontSize: 15)),
             ),
           if (item.mediaUrl == null && item.media != FeedMedia.none)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(14, 0, 14, 0),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
               child: Text('사진을 삭제한 인증이에요', style: TextStyle(fontSize: 13, color: JdColors.faint)),
             ),
           Padding(
@@ -88,7 +88,7 @@ class FeedCard extends StatelessWidget {
                   ),
                 if (item.isMe && item.claps + item.fires > 0) ...[
                   const SizedBox(width: 4),
-                  const Text('친구들이 응원했어요', style: TextStyle(fontSize: 12, color: JdColors.faint)),
+                  Text('친구들이 응원했어요', style: TextStyle(fontSize: 12, color: JdColors.faint)),
                 ],
               ],
             ),
@@ -352,7 +352,7 @@ class _BeforeAfterPagerState extends State<BeforeAfterPager> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('${pages[_page].$1}  ',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JdColors.together)),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: JdColors.together)),
               Expanded(
                 child: Text(
                   (pages[_page].$3 ?? '').isEmpty ? (_page == 0 ? '옆으로 넘겨서 후 사진을 보세요' : '') : pages[_page].$3!,
@@ -458,7 +458,7 @@ class _NetImage extends StatelessWidget {
   Widget build(BuildContext context) => Image.network(
         url,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const ColoredBox(
+        errorBuilder: (_, __, ___) => ColoredBox(
           color: JdColors.empty,
           child: Center(child: Icon(Icons.broken_image_outlined, color: JdColors.faint)),
         ),
