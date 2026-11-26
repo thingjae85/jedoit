@@ -298,9 +298,9 @@ void main() {
 
     expect(find.textContaining('책상 한 구역 정리'), findsOneWidget);
     expect(find.textContaining('책 10쪽 읽기'), findsOneWidget);
-    // 두 방의 친구가 한 줄에 모인다.
-    expect(find.text('철수'), findsOneWidget);
-    expect(find.text('영희'), findsOneWidget);
+    // 방마다 함께하는 친구가 카드 아래에 보인다.
+    expect(find.text('철수와 함께'), findsOneWidget);
+    expect(find.text('영희와 함께'), findsOneWidget);
 
     await tester.tap(find.text('챌린지 하나 더 시작하기'));
     await tester.pumpAndSettle();

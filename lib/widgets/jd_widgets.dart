@@ -73,11 +73,11 @@ class CheckSquare extends StatelessWidget {
         width: size,
         height: size,
         decoration: ShapeDecoration(
-          color: checked ? const Color(0xFFFFE3D6) : JdColors.cream,
+          color: checked ? const Color(0xFFDCEDF9) : JdColors.cream,
           shape: PixelBorder(
               step: size / 8,
               steps: 1,
-              side: BorderSide(color: checked ? SeaArt.coralDeep : JdColors.edgeStrong, width: 1.5)),
+              side: BorderSide(color: checked ? JdColors.together : JdColors.edgeStrong, width: 1.5)),
         ),
         alignment: Alignment.center,
         child: checked ? SeaFish(size: size * 0.42) : null,

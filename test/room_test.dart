@@ -354,6 +354,25 @@ void main() {
     expect(find.text('오늘 인증하기'), findsOneWidget);
   });
 
+  testWidgets('바다 스킨: 물이 얕으면 수조에 상어가 없다', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    JdColors.use(JdSkin.ocean);
+    SeaMotion.enabled = false;
+    addTearDown(() {
+      JdColors.use(JdSkin.wood);
+      SeaMotion.enabled = true;
+    });
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.active, earned: 1, active: 2, n0: 2, goal: 7, total: 10);
+
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now)));
+    await tester.pumpAndSettle();
+    expect(find.byType(SeaTank), findsOneWidget);
+    expect(find.descendant(of: find.byType(SeaTank), matching: find.byType(SeaShark)), findsNothing);
+  });
+
   testWidgets('바다 스킨: 진행도는 물이 차는 수조, 인증하기는 유리관 버튼으로 보인다', (tester) async {
     tester.view.physicalSize = const Size(800, 2000);
     tester.view.devicePixelRatio = 1.0;
@@ -371,6 +390,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SeaTank), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.descendant(of: find.byType(SeaTank), matching: find.byType(SeaShark)), findsOneWidget);
     expect(find.text('3 / 4'), findsOneWidget);
 
     final tube = find.widgetWithText(SeaTubeButton, '오늘 인증하기');

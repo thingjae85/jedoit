@@ -146,8 +146,8 @@ class JdPalette {
     wood: Color(0xFF3C98B2),
     woodLight: Color(0xFFCDEBF1),
     woodText: Color(0xFF1D6A86),
-    leaf: Color(0xFF2F9A7E),
-    leafDeep: Color(0xFF217561),
+    leaf: Color(0xFF2D8CB0),
+    leafDeep: Color(0xFF1F6E8E),
     roomNavy: Color(0xFF22344A),
     roomNavyDeep: Color(0xFF172534),
     cream: Color(0xFFF6FCFD),
@@ -155,21 +155,21 @@ class JdPalette {
     edge: Color(0xFFBFE0E7),
     edgeStrong: Color(0xFF7DBACA),
     woodDeep: Color(0xFF155470),
-    leafLip: Color(0xFF1C6654),
+    leafLip: Color(0xFF185A75),
     creamLip: Color(0xFFC3E2E9),
     empty: Color(0xFFF1F2F4),
     box: Color(0xFFCDD2D7),
     panel: Color(0xFFDAEEF2),
-    solo: Color(0xFF2E8566),
-    soloText: Color(0xFF1F6B52),
-    soloTint: Color(0xFFE3F4EC),
-    soloMid: Color(0xFFBFE3D2),
-    together: Color(0xFFD9603A),
-    togetherText: Color(0xFFA9461F),
-    togetherFill: Color(0xFFFF8559),
-    togetherTint: Color(0xFFFFF3EE),
-    togetherChip: Color(0xFFFFE3D6),
-    togetherEmpty: Color(0xFFFAD0C0),
+    solo: Color(0xFF2A7FA0),
+    soloText: Color(0xFF1D6A86),
+    soloTint: Color(0xFFE1F2F7),
+    soloMid: Color(0xFFB9DFEA),
+    together: Color(0xFF2F7DB5),
+    togetherText: Color(0xFF1F5F8F),
+    togetherFill: Color(0xFF5AA6D6),
+    togetherTint: Color(0xFFEEF6FC),
+    togetherChip: Color(0xFFDCEDF9),
+    togetherEmpty: Color(0xFFC6E0F2),
   );
 }
 
@@ -245,7 +245,9 @@ abstract final class JdColors {
   static Color get togetherEmpty => _p.togetherEmpty;
 
   /// 친구 동그라미 배경. 닉네임마다 돌아가며 쓴다.
-  static List<Color> get avatars => [soloTint, togetherChip, const Color(0xFFEEEAFE), const Color(0xFFE3EFFB), const Color(0xFFFFF4D6)];
+  static List<Color> get avatars => ocean
+      ? const [Color(0xFFE1F2F7), Color(0xFFDCEDF9), Color(0xFFE4EAFB), Color(0xFFD9F0EE), Color(0xFFE8F4FA)]
+      : [soloTint, togetherChip, const Color(0xFFEEEAFE), const Color(0xFFE3EFFB), const Color(0xFFFFF4D6)];
 }
 
 /// 모든 화면이 같은 모양을 쓰도록 정한 판·버튼 모양.

@@ -280,15 +280,20 @@ class _SeaTankState extends State<SeaTank> with SingleTickerProviderStateMixin, 
               final surfaceY = inner.height - 10 - (inner.height - 22) * v;
               final sharkW = widget.sharkWidth ?? inner.width * 0.47;
               final sharkH = sharkW * SeaArt.shark.length / SeaArt.shark.first.length;
-              final sharkTop = math.max(surfaceY + 6, inner.height * 0.42) + 3 * math.sin(t);
+              // 물마루 아래부터 모래 위까지가 상어가 들어갈 만큼 깊을 때만 상어를 띄운다.
+              final depth = inner.height - 10 - surfaceY - 6;
+              final roomy = depth >= sharkH + 4;
+              final bob = math.min(3.0, (depth - sharkH) / 2) * math.sin(t);
+              final sharkTop = surfaceY + 6 + (depth - sharkH) / 2 + bob;
               return Stack(
                 children: [
                   Positioned.fill(child: CustomPaint(painter: _TankPainter(t: t, level: v))),
-                  Positioned(
-                    left: (inner.width - sharkW) / 2,
-                    top: math.min(sharkTop, inner.height - 14 - sharkH),
-                    child: ExcludeSemantics(child: SeaShark(size: sharkH)),
-                  ),
+                  if (roomy)
+                    Positioned(
+                      left: (inner.width - sharkW) / 2,
+                      top: sharkTop,
+                      child: ExcludeSemantics(child: SeaShark(size: sharkH)),
+                    ),
                   if (widget.label.isNotEmpty)
                     Positioned(
                       right: 6,
@@ -573,16 +578,16 @@ class SeaEmptyArt extends StatelessWidget {
 
 /// 판 아래쪽에 까는 얕은 물 띠. 상어가 지나간다.
 class SeaStrip extends StatelessWidget {
-  const SeaStrip({super.key, this.height = 44});
+  const SeaStrip({super.key, this.height = 52});
   final double height;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
         builder: (context, c) => SeaTank(
-          value: 0.8,
+          value: 1,
           label: '',
           size: Size(c.maxWidth, height),
-          sharkWidth: 46,
+          sharkWidth: 34,
           decorative: true,
         ),
       );
