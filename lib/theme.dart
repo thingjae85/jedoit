@@ -33,8 +33,14 @@ abstract final class JdColors {
   static const roomNavyDeep = Color(0xFF172534);
   static const cream = Color(0xFFFFF8EA);
 
-  /// 게임 화면처럼 판과 버튼을 두르는 짙은 갈색 테두리.
+  /// 짙은 갈색. 버튼 글자·도트 그림 선에 쓴다 (테두리에는 쓰지 않는다).
   static const outline = Color(0xFF4A3527);
+
+  /// 판(카드)·입력 칸 테두리. 바탕과 살짝만 구분되는 옅은 나무색.
+  static const edge = Color(0xFFE0D2BC);
+
+  /// 버튼·고른 칸 테두리. 판보다 한 톤 짙게.
+  static const edgeStrong = Color(0xFFC9B08F);
 
   /// 버튼 아래 두께(눌리는 턱) 색.
   static const woodDeep = Color(0xFFA2693A);
@@ -60,13 +66,40 @@ abstract final class JdColors {
   static const avatars = [soloTint, togetherChip, Color(0xFFEEEAFE), Color(0xFFE3EFFB), Color(0xFFFFF4D6)];
 }
 
+/// 모든 화면이 같은 모양을 쓰도록 정한 판·버튼 모양.
+/// - 묶음 판(카드): 크림색 바탕에 짙은 갈색 2px 테두리, 계단 모서리.
+/// - 채운 버튼: 같은 테두리에 아래 턱이 있는 키캡 모양.
+/// - 입력 칸·칩·보조 버튼: 얇은 테두리의 작은 계단 모서리.
+abstract final class JdShapes {
+  static const card = PixelBorder(step: 3, steps: 2, side: BorderSide(color: JdColors.edge, width: 1.5));
+  static const key = PixelBorder(step: 3, steps: 2, lip: 4, side: BorderSide(color: JdColors.edgeStrong, width: 1.5));
+  static const keySmall = PixelBorder(step: 2, steps: 2, lip: 3, side: BorderSide(color: JdColors.edgeStrong, width: 1.5));
+  static const chip = PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.edge, width: 1.5));
+  static const chipOn = PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.edgeStrong, width: 1.5));
+
+  /// 판 안의 작은 판·사진 틀: 얇은 테두리.
+  static const soft = PixelBorder(step: 3, steps: 2, side: BorderSide(color: JdColors.seam, width: 1.5));
+
+  /// 테두리 없는 작은 이름표·배지.
+  static const tag = PixelBorder(step: 2, steps: 1);
+}
+
 ThemeData buildTheme() {
   final scheme = ColorScheme.fromSeed(
-    seedColor: JdColors.solo,
-    primary: JdColors.solo,
+    seedColor: JdColors.wood,
+    primary: JdColors.woodText,
+    onPrimary: Colors.white,
+    secondary: JdColors.solo,
+    secondaryContainer: JdColors.woodLight,
+    onSecondaryContainer: JdColors.outline,
     surface: JdColors.paper,
+    surfaceContainerHighest: JdColors.paperDeep,
+    outline: JdColors.seamDark,
+    error: const Color(0xFFB3261E),
   );
-  final rounded = RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
+  const gameText = TextStyle(fontFamily: kGameFont, fontSize: 16, fontWeight: FontWeight.w800);
+  final disabledFill = WidgetStateProperty.resolveWith<Color?>(
+      (states) => states.contains(WidgetState.disabled) ? JdColors.paperDeep : null);
   return ThemeData(
     useMaterial3: true,
     fontFamily: kAppFont,
@@ -79,33 +112,115 @@ ThemeData buildTheme() {
       centerTitle: false,
       elevation: 0,
       scrolledUnderElevation: 0,
-      titleTextStyle: TextStyle(fontFamily: kGameFont, fontSize: 18, fontWeight: FontWeight.w700, color: JdColors.ink),
+      titleTextStyle: TextStyle(fontFamily: kGameFont, fontSize: 18, fontWeight: FontWeight.w800, color: JdColors.ink),
     ),
-    cardTheme: CardThemeData(
-      color: JdColors.panel,
+    cardTheme: const CardThemeData(
+      color: JdColors.cream,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      shape: JdShapes.card,
+      clipBehavior: Clip.antiAlias,
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(52),
-        shape: rounded,
-        textStyle: const TextStyle(fontFamily: kGameFont, fontSize: 16, fontWeight: FontWeight.w700),
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size.fromHeight(54)),
+        shape: const WidgetStatePropertyAll(JdShapes.key),
+        textStyle: const WidgetStatePropertyAll(gameText),
+        backgroundColor: disabledFill,
+        foregroundColor: WidgetStateProperty.resolveWith<Color?>(
+            (states) => states.contains(WidgetState.disabled) ? JdColors.faint : null),
+        side: WidgetStateProperty.resolveWith((states) => BorderSide(
+            color: states.contains(WidgetState.disabled) ? JdColors.edge : JdColors.edgeStrong, width: 1.5)),
+        elevation: const WidgetStatePropertyAll(0),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: rounded),
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+        shape: const WidgetStatePropertyAll(JdShapes.keySmall),
+        backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled) ? JdColors.paperDeep : JdColors.cream),
+        foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled) ? JdColors.faint : JdColors.outline),
+        side: WidgetStateProperty.resolveWith((states) => BorderSide(
+            color: states.contains(WidgetState.disabled) ? JdColors.edge : JdColors.edgeStrong, width: 1.5)),
+        textStyle: const WidgetStatePropertyAll(
+            TextStyle(fontFamily: kGameFont, fontSize: 15, fontWeight: FontWeight.w700)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: JdColors.woodText,
+        shape: const PixelBorder(step: 2, steps: 1),
+        textStyle: const TextStyle(fontFamily: kGameFont, fontSize: 14, fontWeight: FontWeight.w700),
+      ),
+    ),
+    iconButtonTheme: const IconButtonThemeData(
+      style: ButtonStyle(shape: WidgetStatePropertyAll(PixelBorder(step: 2, steps: 2))),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        shape: const WidgetStatePropertyAll(PixelBorder(step: 2, steps: 2)),
+        side: const WidgetStatePropertyAll(BorderSide(color: JdColors.edgeStrong, width: 1.5)),
+        backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected) ? JdColors.woodLight : JdColors.cream),
+        foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected) ? JdColors.outline : JdColors.subtle),
+        textStyle: const WidgetStatePropertyAll(
+            TextStyle(fontFamily: kGameFont, fontSize: 14, fontWeight: FontWeight.w700)),
+        minimumSize: const WidgetStatePropertyAll(Size(0, 44)),
+      ),
+    ),
+    chipTheme: const ChipThemeData(
+      backgroundColor: JdColors.cream,
+      selectedColor: JdColors.woodLight,
+      disabledColor: JdColors.paperDeep,
+      shape: JdShapes.chip,
+      side: BorderSide(color: JdColors.edge, width: 1.5),
+      labelStyle: TextStyle(fontFamily: kAppFont, fontSize: 14, fontWeight: FontWeight.w600, color: JdColors.ink),
+      iconTheme: IconThemeData(color: JdColors.woodText, size: 18),
+      showCheckmark: false,
+    ),
+    radioTheme: RadioThemeData(
+      fillColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? JdColors.woodText : JdColors.seamDark),
     ),
     checkboxTheme: CheckboxThemeData(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-      side: const BorderSide(color: JdColors.box, width: 2),
+      shape: const PixelBorder(step: 2, steps: 1),
+      side: const BorderSide(color: JdColors.edgeStrong, width: 1.5),
+      fillColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? JdColors.leaf : Colors.transparent),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: JdColors.panel,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      fillColor: JdColors.cream,
+      labelStyle: const TextStyle(color: JdColors.subtle),
+      floatingLabelStyle: const TextStyle(color: JdColors.woodText, fontWeight: FontWeight.w700),
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(3), borderSide: const BorderSide(color: JdColors.edge, width: 1.5)),
+      enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(3), borderSide: const BorderSide(color: JdColors.edge, width: 1.5)),
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(3), borderSide: const BorderSide(color: JdColors.woodText, width: 1.5)),
     ),
+    dialogTheme: const DialogThemeData(
+      backgroundColor: JdColors.cream,
+      surfaceTintColor: Colors.transparent,
+      shape: JdShapes.card,
+      titleTextStyle: TextStyle(fontFamily: kGameFont, fontSize: 18, fontWeight: FontWeight.w800, color: JdColors.ink),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: JdColors.cream,
+      surfaceTintColor: Colors.transparent,
+      shape: JdShapes.card,
+    ),
+    popupMenuTheme: const PopupMenuThemeData(
+      color: JdColors.cream,
+      surfaceTintColor: Colors.transparent,
+      shape: JdShapes.card,
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(color: JdColors.wood, linearTrackColor: JdColors.paperDeep),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: JdColors.paper,
       surfaceTintColor: Colors.transparent,
@@ -119,7 +234,13 @@ ThemeData buildTheme() {
             color: states.contains(WidgetState.selected) ? JdColors.ink : JdColors.faint,
           )),
     ),
-    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
-    dividerTheme: const DividerThemeData(color: JdColors.line, thickness: 1, space: 1),
+    snackBarTheme: const SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: JdColors.roomNavyDeep,
+      shape: PixelBorder(step: 3, steps: 2),
+      contentTextStyle: TextStyle(fontFamily: kAppFont, fontSize: 14, color: JdColors.cream),
+      actionTextColor: JdColors.woodLight,
+    ),
+    dividerTheme: const DividerThemeData(color: JdColors.seam, thickness: 1, space: 1),
   );
 }

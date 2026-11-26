@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jeoduit/app.dart';
 import 'package:jeoduit/models/mission.dart';
 import 'package:jeoduit/models/mission_record.dart';
+import 'package:jeoduit/models/room.dart';
 import 'package:jeoduit/services/account_service.dart';
 import 'package:jeoduit/screens/room_entry_screen.dart';
 import 'package:jeoduit/services/draft_store.dart';
@@ -98,7 +99,34 @@ class _FakeAccount extends AccountService {
 /// 참여 중인 방이 없는 서버. 이 테스트에서 쓰지 않는 기능은 호출되면 실패한다.
 class _NoRooms implements RoomService {
   @override
-  Future<String?> myRoomId() async => null;
+  Future<List<String>> myRoomIds() async => [];
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
+}
+
+/// 두 방에 동시에 참여 중인 서버.
+class _TwoRooms implements RoomService {
+  @override
+  Future<List<String>> myRoomIds() async => ['room-a', 'room-b'];
+  @override
+  Future<RoomSummary> summary(String roomId) async => RoomSummary(
+        id: roomId,
+        status: RoomStatus.recruiting,
+        inviteCode: 'ABCD2345',
+        isHost: true,
+        recruitExpiresAt: DateTime.now().add(const Duration(hours: 20)),
+        activeCount: 1,
+        totalElements: 3,
+        earned: 0,
+        validCount: 0,
+        kind: roomId == 'room-a' ? ChallengeKind.tidy : ChallengeKind.reading,
+        title: roomId == 'room-a' ? '책상 한 구역 정리' : '책 10쪽 읽기',
+      );
+  @override
+  Future<List<RoomMember>> members(String roomId) async => [
+        const RoomMember(nickname: '명재', nicknameNo: 1, isMe: true, isHost: true, checkins: 0),
+        RoomMember(nickname: roomId == 'room-a' ? '철수' : '영희', nicknameNo: 1, isMe: false, isHost: false, checkins: 0),
+      ];
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
@@ -254,5 +282,28 @@ void main() {
     await tester.pumpAndSettle();
     final entry = tester.widget<RoomEntryScreen>(find.byType(RoomEntryScreen));
     expect(entry.inviteCode, 'ABCD2345');
+  });
+
+  testWidgets('여러 챌린지에 참여 중이면 챌린지 탭에 방마다 카드가 있고 하나 더 시작할 수 있다', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final drafts = DraftStore(storage: SessionStorage());
+    final account = _FakeAccount(drafts);
+    await account.signInAsGuest();
+    await tester.pumpWidget(JeoduitApp(account: account, rooms: _TwoRooms(), drafts: drafts));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('챌린지'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('책상 한 구역 정리'), findsOneWidget);
+    expect(find.textContaining('책 10쪽 읽기'), findsOneWidget);
+    // 두 방의 친구가 한 줄에 모인다.
+    expect(find.text('철수'), findsOneWidget);
+    expect(find.text('영희'), findsOneWidget);
+
+    await tester.tap(find.text('챌린지 하나 더 시작하기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(RoomEntryScreen), findsOneWidget);
   });
 }

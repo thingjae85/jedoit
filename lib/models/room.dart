@@ -319,3 +319,73 @@ class BeforeShot {
   final String url;
   final String? note;
 }
+
+/// 기록 탭의 챌린지 한 줄: 내가 참여한 챌린지 방 하나.
+class ChallengeHistory {
+  const ChallengeHistory({
+    required this.id,
+    required this.round,
+    required this.status,
+    required this.kind,
+    required this.title,
+    required this.days,
+    this.startsAt,
+    this.endsAt,
+    this.goal,
+    required this.earned,
+    this.goalReachedAt,
+    required this.memberCount,
+  });
+
+  final String id;
+
+  /// 같은 친구들과 다시 한 횟수. 처음 방은 1.
+  final int round;
+  final RoomStatus status;
+  final ChallengeKind kind;
+  final String title;
+  final int days;
+  final DateTime? startsAt;
+  final DateTime? endsAt;
+  final int? goal;
+  final int earned;
+  final DateTime? goalReachedAt;
+  final int memberCount;
+
+  String get challengeName => '$days일 $title';
+
+  /// 서버 상태는 끝나는 시각이 지나도 진행 중으로 남을 수 있어 시각으로 다시 본다.
+  RoomStatus statusAt(DateTime now) {
+    if ((status == RoomStatus.active || status == RoomStatus.scheduled) && endsAt != null && !now.isBefore(endsAt!)) {
+      return RoomStatus.finished;
+    }
+    if (status == RoomStatus.scheduled && startsAt != null && !now.isBefore(startsAt!)) return RoomStatus.active;
+    return status;
+  }
+
+  factory ChallengeHistory.fromJson(Map<String, dynamic> j) {
+    DateTime? t(String k) => j[k] == null ? null : DateTime.parse(j[k] as String);
+    return ChallengeHistory(
+      id: j['id'] as String,
+      round: (j['round'] as int?) ?? 1,
+      status: _status(j['status'] as String),
+      kind: ChallengeKind.fromServer(j['category'] as String?),
+      title: (j['title'] as String?) ?? '책상 한 구역 정리',
+      days: (j['days'] as int?) ?? 3,
+      startsAt: t('starts_at'),
+      endsAt: t('ends_at'),
+      goal: j['goal'] as int?,
+      earned: (j['earned'] as int?) ?? 0,
+      goalReachedAt: t('goal_reached_at'),
+      memberCount: (j['member_count'] as int?) ?? 0,
+    );
+  }
+}
+
+/// 방 화면의 회차 정보. [nextRoomId]는 다음 회차가 열렸고 내가 그 방에 있을 때만 있다.
+class RoomRound {
+  const RoomRound({this.round = 1, this.nextRoomId});
+
+  final int round;
+  final String? nextRoomId;
+}

@@ -13,9 +13,11 @@ import '../services/room_service.dart';
 import '../theme.dart';
 import '../utils/format.dart';
 import '../widgets/jd_widgets.dart';
+import '../widgets/pixel_ui.dart';
 import '../widgets/room_feed.dart';
 import 'chat_screen.dart';
 import 'checkin_screen.dart';
+import 'room_entry_screen.dart';
 
 /// 초대 링크: 앱 주소에 `?invite=코드`를 붙인다. OAuth의 `code` 파라미터와 겹치지 않는다.
 String inviteLink(Uri base, String code) => Uri(
@@ -66,6 +68,7 @@ class _RoomScreenState extends State<RoomScreen> {
   List<RoomMember> _members = [];
   List<MyCheckin> _mine = [];
   List<FeedItem> _feed = [];
+  RoomRound _round = const RoomRound();
   bool _loadFailed = false;
   bool _busy = false;
   Timer? _timer;
@@ -194,10 +197,15 @@ class _RoomScreenState extends State<RoomScreen> {
           feed = await widget.rooms.feed(widget.roomId);
         } catch (_) {}
       }
+      var round = _round;
+      try {
+        round = await widget.rooms.round(widget.roomId);
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _summary = s;
         _members = m;
+        _round = round;
         _mine = mine;
         _feed = feed;
         _loadFailed = false;
@@ -353,7 +361,9 @@ class _RoomScreenState extends State<RoomScreen> {
     final summary = _summary;
     return Scaffold(
       appBar: AppBar(
-        title: Text(summary == null ? '챌린지' : '${summary.challengeName} 챌린지'),
+        title: Text(summary == null
+            ? '챌린지'
+            : '${_round.round > 1 ? '${_round.round}회차 · ' : ''}${summary.challengeName} 챌린지'),
         actions: [
           if (_chatOpen(summary))
             IconButton(
@@ -383,7 +393,6 @@ class _RoomScreenState extends State<RoomScreen> {
                   style: FilledButton.styleFrom(
                     backgroundColor: JdColors.together,
                     minimumSize: const Size.fromHeight(56),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   ),
                   onPressed: _busy ? null : _openCheckIn,
                   icon: const Icon(Icons.photo_camera_outlined),
@@ -423,7 +432,7 @@ class _RoomScreenState extends State<RoomScreen> {
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: JdColors.togetherChip, borderRadius: BorderRadius.circular(8)),
+                decoration: const ShapeDecoration(color: JdColors.togetherChip, shape: JdShapes.tag),
                 child: Text(s.checkinMode.label,
                     style: const TextStyle(fontSize: 12, color: JdColors.togetherText, fontWeight: FontWeight.w700)),
               ),
@@ -528,6 +537,20 @@ class _RoomScreenState extends State<RoomScreen> {
             onPressed: _busy || _members.length < 2 ? null : _confirmStart,
             child: Text(_members.length < 2 ? '2명 이상 모이면 시작할 수 있어요' : '이 인원으로 시작 확정'),
           ),
+        if (status == RoomStatus.finished && me != null)
+          _round.nextRoomId != null
+              ? FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: JdColors.together),
+                  onPressed: () => _openRoom(_round.nextRoomId!),
+                  icon: const Icon(Icons.arrow_forward),
+                  label: Text('${_round.round + 1}회차 방으로 가기'),
+                )
+              : FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: JdColors.together),
+                  onPressed: _busy ? null : () => _restart(s, me),
+                  icon: const Icon(Icons.replay),
+                  label: const Text('같은 친구들과 다시 하기'),
+                ),
         if (status != RoomStatus.finished && me != null)
           TextButton(
             onPressed: _busy ? null : _leave,
@@ -536,6 +559,21 @@ class _RoomScreenState extends State<RoomScreen> {
       ],
     );
   }
+
+  /// 다시 하기: 지난 설정을 채운 화면에서 고친 뒤 다음 회차 방을 만들고 그 방으로 간다.
+  Future<void> _restart(RoomSummary s, RoomMember me) async {
+    final id = await Navigator.of(context).push<String>(MaterialPageRoute(
+      builder: (_) => RoomEntryScreen(rooms: widget.rooms, restartFrom: s, nickname: me.nickname),
+    ));
+    if (id == null || !mounted) return;
+    await _openRoom(id);
+  }
+
+  /// 이 방 화면을 다음 회차 방 화면으로 바꾼다.
+  Future<void> _openRoom(String id) => Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+        builder: (_) => RoomScreen(
+            rooms: widget.rooms, roomId: id, now: widget.now, autoRefresh: widget.autoRefresh, chat: widget.chat),
+      ));
 
   String _statusDetail(RoomSummary s, RoomStatus status) => switch (status) {
         RoomStatus.recruiting =>
@@ -547,8 +585,8 @@ class _RoomScreenState extends State<RoomScreen> {
             CheckinMode.light => '한 줄로',
           }} 인증해요. ${formatDateTime(s.endsAt!.toLocal())}에 끝나요.',
         RoomStatus.finished => s.goalReachedAt != null
-            ? '공동 목표를 달성했어요! 진행도와 배지는 그대로 남아요.'
-            : '쌓인 진행도와 인증 기록은 그대로 남아요.',
+            ? '공동 목표를 달성했어요! 진행도와 단톡방, 인증 기록은 기록 탭에서 언제든 다시 볼 수 있어요.'
+            : '쌓인 진행도와 단톡방, 인증 기록은 기록 탭에서 언제든 다시 볼 수 있어요.',
         RoomStatus.cancelled => '새 방을 만들 수 있어요.',
         RoomStatus.expired => '새 방을 만들 수 있어요.',
       };
@@ -565,10 +603,10 @@ class _ChatEntry extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: JdColors.togetherTint,
-      borderRadius: BorderRadius.circular(16),
+      color: JdColors.cream,
+      shape: JdShapes.card,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        customBorder: JdShapes.card,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -599,7 +637,7 @@ class _ChatEntry extends StatelessWidget {
                   key: const Key('chatUnread'),
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   margin: const EdgeInsets.only(right: 4),
-                  decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
+                  decoration: ShapeDecoration(color: Colors.red.shade700, shape: JdShapes.tag),
                   child: Text(unread > 99 ? '99+' : '$unread',
                       style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
                 ),
@@ -622,7 +660,7 @@ class _InviteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: JdColors.togetherTint, borderRadius: BorderRadius.circular(20)),
+      decoration: const ShapeDecoration(color: JdColors.cream, shape: JdShapes.card),
       child: Column(
         children: [
           const CategoryChip.together(label: '친구 초대'),
@@ -632,14 +670,13 @@ class _InviteCard extends StatelessWidget {
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+            decoration: const ShapeDecoration(color: Colors.white, shape: JdShapes.soft),
             child: QrImageView(key: const Key('inviteQr'), data: link, size: 190),
           ),
           const SizedBox(height: 14),
           SelectableText(code, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 4)),
           const SizedBox(height: 10),
-          FilledButton.tonalIcon(
-            style: FilledButton.styleFrom(backgroundColor: JdColors.togetherChip, foregroundColor: JdColors.togetherText),
+          OutlinedButton.icon(
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: link));
               if (context.mounted) {
@@ -689,9 +726,8 @@ class _ProgressCard extends StatelessWidget {
     }
     final todayIndex = start == null ? -1 : today.difference(start).inDays;
 
-    return Container(
+    return GamePanel(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: JdColors.togetherTint, borderRadius: BorderRadius.circular(20)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -719,7 +755,7 @@ class _ProgressCard extends StatelessWidget {
                       builder: (_, v, __) => CircularProgressIndicator(
                         value: v,
                         strokeWidth: 12,
-                        strokeCap: StrokeCap.round,
+                        strokeCap: StrokeCap.butt,
                         backgroundColor: JdColors.togetherEmpty,
                         color: JdColors.together,
                       ),
@@ -790,6 +826,12 @@ class _ProgressCard extends StatelessWidget {
   }
 }
 
+/// 일차 칸 모양: 오늘은 짙은 테두리, 나머지는 얇은 테두리.
+PixelBorder _dayShape(bool today) => PixelBorder(
+    step: 2,
+    steps: 1,
+    side: BorderSide(color: today ? JdColors.woodText : JdColors.edge, width: 1.5));
+
 /// 8일 이상 챌린지: 한 줄에 7칸씩 달력처럼. 모두 인증한 날은 진하게, 일부만 한 날은 옅게 칠한다.
 class _DayGrid extends StatelessWidget {
   const _DayGrid({required this.perDay, required this.members, required this.todayIndex});
@@ -818,16 +860,15 @@ class _DayGrid extends StatelessWidget {
             for (var d = 0; d < perDay.length; d++)
               Container(
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
+                decoration: ShapeDecoration(
                   color: d > todayIndex
-                      ? Colors.white
+                      ? JdColors.paper
                       : members > 0 && perDay[d] >= members
                           ? JdColors.together
                           : perDay[d] > 0
                               ? JdColors.togetherChip
-                              : Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: d == todayIndex ? JdColors.together : Colors.transparent, width: 2),
+                              : JdColors.paper,
+                  shape: _dayShape(d == todayIndex),
                 ),
                 child: Text('${d + 1}',
                     style: TextStyle(
@@ -873,11 +914,7 @@ class _DayCell extends StatelessWidget {
     if (compact) {
       return Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: all ? JdColors.together : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: today ? JdColors.together : Colors.transparent, width: 2),
-        ),
+        decoration: ShapeDecoration(color: all ? JdColors.together : JdColors.paper, shape: _dayShape(today)),
         child: Column(
           children: [
             Text(label,
@@ -894,11 +931,7 @@ class _DayCell extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-      decoration: BoxDecoration(
-        color: all ? JdColors.together : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: today ? JdColors.together : Colors.transparent, width: 2),
-      ),
+      decoration: ShapeDecoration(color: all ? JdColors.together : JdColors.paper, shape: _dayShape(today)),
       child: Column(
         children: [
           Text(today ? '$label · 오늘' : label,
@@ -916,7 +949,6 @@ class _DayCell extends StatelessWidget {
                   height: 10,
                   margin: const EdgeInsets.symmetric(horizontal: 2),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
                     color: i < done ? (all ? Colors.white : JdColors.togetherFill) : (all ? Colors.white38 : JdColors.togetherEmpty),
                   ),
                 ),

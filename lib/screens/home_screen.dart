@@ -69,8 +69,11 @@ class _HomeScreenState extends State<HomeScreen> {
   List<MissionRecord> _records = [];
   bool _loadFailed = false;
 
-  RoomSummary? _room;
-  List<RoomMember> _members = [];
+  /// 내가 참여 중인 챌린지 방들 (최근에 만든 방부터).
+  List<_JoinedRoom> _joined = [];
+
+  /// 최근에 끝났고 아직 다시 하지 않은 방들. 여기서 바로 다시 할 수 있다.
+  List<_JoinedRoom> _finished = [];
 
   late final SpaceStore _space = widget.space ?? SpaceStore();
   SpacePrefs _prefs = const SpacePrefs();
@@ -97,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_challengeAvailable && widget.drafts?.invite != null) {
       _tab = _challengeTab;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _openChallenge();
+        if (mounted) _newChallenge();
       });
     }
   }
@@ -207,71 +210,71 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// 챌린지 탭의 친구 줄과 챌린지 카드에 쓸 내 방. 실패해도 홈은 그대로 쓴다.
+  /// 챌린지 탭의 친구 줄과 챌린지 카드에 쓸 내 방들. 실패해도 홈은 그대로 쓴다.
   Future<void> _loadRoom() async {
     final rooms = widget.rooms;
     if (rooms == null || !(widget.account?.signedIn ?? false)) {
-      if (_room != null && mounted) {
+      if ((_joined.isNotEmpty || _finished.isNotEmpty) && mounted) {
         setState(() {
-          _room = null;
-          _members = [];
+          _joined = [];
+          _finished = [];
         });
       }
       return;
     }
     try {
-      final id = await rooms.myRoomId();
-      final summary = id == null ? null : await rooms.summary(id);
-      final members = id == null ? <RoomMember>[] : await rooms.members(id);
+      final ids = await rooms.myRoomIds();
+      final joined = await Future.wait(ids.map((id) async =>
+          _JoinedRoom(id, await rooms.summary(id), await rooms.members(id))));
       if (!mounted) return;
-      setState(() {
-        _room = summary;
-        _members = members;
-      });
+      setState(() => _joined = joined);
+    } catch (_) {}
+    try {
+      final ids = await rooms.finishedRoomIds();
+      final finished = await Future.wait(ids.map((id) async =>
+          _JoinedRoom(id, await rooms.summary(id), const [])));
+      if (mounted) setState(() => _finished = finished);
     } catch (_) {}
   }
 
-  /// 함께하기: 로그인 → (참여 중인 방이 없으면) 방 만들기·참가 → 방 화면.
-  Future<void> _openChallenge() async {
+  /// 친구 챌린지를 쓸 준비: 서버 연결 확인과 로그인(또는 게스트 참여).
+  Future<bool> _readyForChallenge() async {
     if (!_challengeAvailable) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('지금은 서버에 연결하지 못해 친구 챌린지를 쓸 수 없어요')),
       );
-      return;
+      return false;
     }
-    final account = widget.account!;
-    final rooms = widget.rooms!;
-    if (!account.signedIn && !await _askHowToJoin()) return;
-    if (!mounted) return;
-    String? roomId;
-    try {
-      roomId = await rooms.myRoomId();
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('방 정보를 불러오지 못했어요. 다시 시도해 주세요')),
-      );
-      return;
-    }
-    if (!mounted) return;
-    if (roomId == null) {
-      roomId = await Navigator.of(context).push<String>(
-        MaterialPageRoute(
-          builder: (_) =>
-              RoomEntryScreen(rooms: rooms, inviteCode: widget.drafts?.invite),
-        ),
-      );
-      if (roomId == null || !mounted) return;
-      widget.drafts?.clearInvite();
-    } else if (widget.drafts?.invite != null) {
-      widget.drafts!.clearInvite();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미 참여 중인 방이 있어 그 방을 열었어요')),
-      );
-    }
+    if (widget.account!.signedIn) return true;
+    if (!await _askHowToJoin() || !mounted) return false;
+    // 로그인한 계정에 이미 참여 중인 방이 있으면 목록에 보이게 한다.
+    await _loadRoom();
+    return mounted;
+  }
+
+  /// 새 챌린지: 방 만들기 또는 초대 코드로 참가 → 그 방 화면.
+  Future<void> _newChallenge() async {
+    final wasSignedIn = widget.account?.signedIn ?? false;
+    if (!await _readyForChallenge() || !mounted) return;
+    final invite = widget.drafts?.invite;
+    // 방금 로그인했는데 이미 참여 중인 방이 있으면, 초대받은 게 아닌 한 목록을 먼저 보여 준다.
+    if (!wasSignedIn && invite == null && _joined.isNotEmpty) return;
+    final roomId = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => RoomEntryScreen(rooms: widget.rooms!, inviteCode: invite),
+      ),
+    );
+    if (roomId == null || !mounted) return;
+    widget.drafts?.clearInvite();
+    await _openRoom(roomId);
+  }
+
+  /// 참여 중인 방 하나를 연다.
+  Future<void> _openRoom(String roomId) async {
+    if (!await _readyForChallenge() || !mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-          builder: (_) => RoomScreen(rooms: rooms, roomId: roomId!)),
+          builder: (_) => RoomScreen(rooms: widget.rooms!, roomId: roomId)),
     );
     if (mounted) setState(() {});
     await _loadRoom();
@@ -658,6 +661,8 @@ class _HomeScreenState extends State<HomeScreen> {
           repository: widget.repository,
           initialDay: _recordsDay,
           onPickMission: () => _selectTab(_homeTab),
+          loadChallenges: _challengeAvailable && widget.account!.signedIn ? widget.rooms!.history : null,
+          onOpenChallenge: _openRoom,
         ),
       _homeTab => _homeBody(context),
       _challengeTab => _challengeBody(context),
@@ -841,9 +846,9 @@ class _HomeScreenState extends State<HomeScreen> {
               const Spacer(),
               if (available)
                 IconButton(
-                  tooltip: '친구 초대',
-                  icon: const Icon(Icons.person_add_alt_outlined),
-                  onPressed: _openChallenge,
+                  tooltip: '새 챌린지',
+                  icon: const Icon(Icons.add_circle_outline),
+                  onPressed: _joined.length < maxOpenRooms ? _newChallenge : null,
                 ),
             ],
           ),
@@ -861,17 +866,52 @@ class _HomeScreenState extends State<HomeScreen> {
             )
           else ...[
             _FriendRow(
-              members: _members,
-              signedIn: widget.account!.signedIn,
-              onTap: _openChallenge,
+              joined: _joined,
+              onOpenRoom: _openRoom,
+              onInvite: () => _joined.length == 1 ? _openRoom(_joined.first.id) : _newChallenge(),
             ),
             const SizedBox(height: 16),
-            _ChallengeCard(
-              room: _room,
-              signedIn: widget.account!.signedIn,
-              invited: widget.drafts?.invite != null,
-              onTap: _openChallenge,
-            ),
+            for (final j in _joined) ...[
+              _ChallengeCard(
+                room: j.summary,
+                signedIn: true,
+                invited: false,
+                onTap: () => _openRoom(j.id),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (_joined.length < maxOpenRooms)
+              _ChallengeCard(
+                room: null,
+                another: _joined.isNotEmpty,
+                signedIn: widget.account!.signedIn,
+                invited: widget.drafts?.invite != null,
+                onTap: _newChallenge,
+              )
+            else
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text('챌린지는 한 번에 $maxOpenRooms개까지 함께할 수 있어요. 하나가 끝나면 새로 시작해 보세요.',
+                    style: TextStyle(fontSize: 13, color: JdColors.subtle)),
+              ),
+            if (_finished.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              const Text('최근에 끝난 챌린지',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              const Text('결과를 보고, 같은 친구들과 바로 다시 할 수 있어요. 지난 챌린지는 모두 기록 탭에 있어요.',
+                  style: TextStyle(fontSize: 13, color: JdColors.subtle)),
+              const SizedBox(height: 10),
+              for (final j in _finished) ...[
+                _ChallengeCard(
+                  room: j.summary,
+                  signedIn: true,
+                  invited: false,
+                  onTap: () => _openRoom(j.id),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ],
           ],
         ],
       ),
@@ -1147,7 +1187,7 @@ class _BuddyBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const shape = PixelBorder(step: 3, steps: 1, side: BorderSide(color: JdColors.outline, width: 2));
+    const shape = PixelBorder(step: 3, steps: 1, side: BorderSide(color: JdColors.edgeStrong, width: 1.5));
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -1277,52 +1317,70 @@ class _HexIconPainter extends CustomPainter {
 }
 
 /// 같은 방 참가자 동그라미 줄. 방이 없으면 나와 초대 버튼만 보인다.
+/// 내가 참여 중인 방과 그 방의 참가자들.
+class _JoinedRoom {
+  const _JoinedRoom(this.id, this.summary, this.members);
+
+  final String id;
+  final RoomSummary summary;
+  final List<RoomMember> members;
+}
+
+/// 챌린지 탭 맨 위 친구 줄. 여러 방에 있는 친구를 한 줄에 모으고, 누르면 그 친구가 있는 방이 열린다.
 class _FriendRow extends StatelessWidget {
   const _FriendRow(
-      {required this.members, required this.signedIn, required this.onTap});
+      {required this.joined, required this.onOpenRoom, required this.onInvite});
 
-  final List<RoomMember> members;
-  final bool signedIn;
-  final VoidCallback onTap;
+  final List<_JoinedRoom> joined;
+  final ValueChanged<String> onOpenRoom;
+  final VoidCallback onInvite;
 
   @override
   Widget build(BuildContext context) {
-    final people = members.isEmpty
-        ? [(name: '나', label: '나')]
-        : [
-            for (final m in [
-              ...members.where((m) => m.isMe),
-              ...members.where((m) => !m.isMe)
-            ])
-              (name: m.nickname, label: m.isMe ? '나' : m.displayName),
-          ];
+    final friends = <({String name, String label, String roomId})>[];
+    final seen = <String>{};
+    for (final j in joined) {
+      for (final m in j.members.where((m) => !m.isMe)) {
+        if (seen.add(m.displayName)) {
+          friends.add((name: m.nickname, label: m.displayName, roomId: j.id));
+        }
+      }
+    }
+    final together = joined.isNotEmpty;
+    final canInvite = joined.any((j) => j.members.length < 4) || !together;
     return SizedBox(
       height: 76,
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          for (final (i, p) in people.indexed)
+          _FriendSlot(
+            label: '나',
+            onTap: together ? () => onOpenRoom(joined.first.id) : onInvite,
+            child: FriendAvatar(
+                name: joined.isEmpty
+                    ? '나'
+                    : joined.first.members.firstWhere((m) => m.isMe, orElse: () => joined.first.members.first).nickname,
+                index: 0,
+                ring: together ? JdColors.togetherFill : null),
+          ),
+          for (final (i, f) in friends.indexed)
             _FriendSlot(
-              label: p.label,
-              onTap: onTap,
-              child: FriendAvatar(
-                  name: p.name,
-                  index: i,
-                  ring: members.isEmpty ? null : JdColors.togetherFill),
+              label: f.label,
+              onTap: () => onOpenRoom(f.roomId),
+              child: FriendAvatar(name: f.name, index: i + 1, ring: JdColors.togetherFill),
             ),
-          if (members.length < 4)
+          if (canInvite)
             _FriendSlot(
               label: '초대',
-              onTap: onTap,
+              onTap: onInvite,
               child: Container(
                 width: 52,
                 height: 52,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: JdColors.panel,
-                  border: Border.all(color: const Color(0xFFE4E6E9), width: 2),
+                decoration: const ShapeDecoration(
+                  color: JdColors.cream,
+                  shape: PixelBorder(step: 5.2, steps: 2, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
                 ),
-                child: const Icon(Icons.add, color: JdColors.subtle),
+                child: const Icon(Icons.add, color: JdColors.woodText),
               ),
             ),
         ],
@@ -1723,9 +1781,13 @@ class _ChallengeCard extends StatelessWidget {
       {required this.room,
       required this.signedIn,
       required this.invited,
-      required this.onTap});
+      required this.onTap,
+      this.another = false});
 
   final RoomSummary? room;
+
+  /// 이미 참여 중인 방이 있고, 하나 더 시작하는 카드.
+  final bool another;
   final bool signedIn;
   final bool invited;
   final VoidCallback onTap;
@@ -1746,20 +1808,25 @@ class _ChallengeCard extends StatelessWidget {
     } else if (invited) {
       title = '초대받은 방이 있어요';
       detail = signedIn ? '눌러서 참가해 보세요' : '로그인 없이 닉네임만으로 참가할 수 있어요';
+    } else if (another) {
+      title = '챌린지 하나 더 시작하기';
+      detail = '새 방을 만들거나 초대 코드로 다른 방에 참가해요';
     } else {
       title = '친구와 함께 챌린지';
       detail = signedIn ? '정리·책 읽기·운동 등 할 일과 기간을 정해 함께 해요' : '로그인 없이도 친구를 초대할 수 있어요';
     }
     return Material(
-      color: JdColors.togetherTint,
-      borderRadius: BorderRadius.circular(18),
+      color: JdColors.cream,
+      shape: JdShapes.card,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        customBorder: JdShapes.card,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
+              Icon(r == null ? Icons.add_circle_outline : challengeIcon(r.kind), color: JdColors.together),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1773,14 +1840,9 @@ class _ChallengeCard extends StatelessWidget {
                             fontSize: 13, color: JdColors.subtle)),
                     if (showProgress && (r!.goal ?? r.totalElements) > 0) ...[
                       const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: LinearProgressIndicator(
-                          value: (r.earned / (r.goal ?? r.totalElements)).clamp(0.0, 1.0).toDouble(),
-                          minHeight: 6,
-                          backgroundColor: Colors.white,
-                          color: JdColors.together,
-                        ),
+                      PixelBar(
+                        value: r.earned / (r.goal ?? r.totalElements),
+                        color: JdColors.together,
                       ),
                     ],
                   ],

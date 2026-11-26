@@ -9,7 +9,7 @@ import '../utils/video.dart';
 String roomErrorMessage(Object error) {
   final text = error is PostgrestException ? error.message : error.toString();
   const messages = {
-    'already_in_room': '이미 참여 중인 방이 있어요. 한 번에 한 방만 참여할 수 있어요.',
+    'already_in_room': '참여 중인 챌린지가 너무 많아요. 한 번에 $maxOpenRooms개까지 함께할 수 있어요.',
     'invite_not_found': '초대 코드를 찾지 못했어요. 코드를 다시 확인해 주세요.',
     'invite_closed': '모집이 끝난 방이에요.',
     'room_full': '방이 가득 찼어요 (최대 4명).',
@@ -29,6 +29,7 @@ String roomErrorMessage(Object error) {
     'wrong_mode': '이 방의 인증 방식과 맞지 않아요.',
     'bad_title': '챌린지 이름은 2~20자로 정해 주세요.',
     'bad_days': '기간은 1일부터 60일까지 정할 수 있어요.',
+    'room_not_finished': '챌린지가 끝난 뒤에 다시 할 수 있어요.',
     'own_checkin': '내 인증에는 응원할 수 없어요.',
     'checkin_not_found': '취소된 인증이에요.',
   };
@@ -38,9 +39,13 @@ String roomErrorMessage(Object error) {
   return '잠시 후 다시 시도해 주세요.';
 }
 
+/// 한 계정이 동시에 참여할 수 있는 열린 방(모집·예약·진행 중) 수. 서버 _has_open_room()과 같은 값.
+const maxOpenRooms = 5;
+
 /// 방 생성·참가·시작·인증·이탈. 모든 규칙 계산은 서버 DB 함수가 한다.
 abstract class RoomService {
-  Future<String?> myRoomId();
+  /// 내가 들어가 있는 열린 방들, 최근에 만든 방부터.
+  Future<List<String>> myRoomIds();
   Future<RoomSummary> summary(String roomId);
   Future<List<RoomMember>> members(String roomId);
   Future<InvitePreview?> preview(String code);
@@ -52,6 +57,25 @@ abstract class RoomService {
     int days = 3,
   });
   Future<String> join(String code, String nickname);
+
+  /// 끝난 방 [prevRoomId]의 친구들과 다음 회차 방을 만든다. 이미 열렸으면 그 방을 돌려준다.
+  Future<String> restart(
+    String prevRoomId,
+    String nickname, {
+    required CheckinMode mode,
+    required ChallengeKind kind,
+    required String title,
+    required int days,
+  });
+
+  /// 몇 회차인지와 다음 회차 방. 서버가 모르면 1회차로 본다.
+  Future<RoomRound> round(String roomId);
+
+  /// 최근 7일 안에 끝났고 아직 다시 하지 않은 내 방들.
+  Future<List<String>> finishedRoomIds();
+
+  /// 기록 탭: 내가 참여한 모든 챌린지, 최근에 만든 방부터.
+  Future<List<ChallengeHistory>> history();
   /// 시작 확정. [tomorrow]면 내일 0시(한국 시간)에 시작하고, 아니면 오늘이 1일차다.
   Future<void> confirmStart(String roomId, {bool tomorrow = false});
   Future<void> leave(String roomId);
@@ -90,7 +114,65 @@ class SupabaseRoomService implements RoomService {
   Map<String, dynamic> _first(dynamic rows) => (rows as List).first as Map<String, dynamic>;
 
   @override
-  Future<String?> myRoomId() async => await _db.rpc('my_room_id') as String?;
+  Future<List<String>> myRoomIds() async {
+    try {
+      final rows = await _db.rpc('my_room_ids') as List;
+      return [for (final r in rows) (r as Map<String, dynamic>)['id'] as String];
+    } on PostgrestException catch (e) {
+      // 서버에 my_room_ids가 아직 없으면 예전 함수로 방 하나만 가져온다.
+      if (e.code != 'PGRST202' && !e.message.contains('my_room_ids')) rethrow;
+      final id = await _db.rpc('my_room_id') as String?;
+      return id == null ? [] : [id];
+    }
+  }
+
+  /// 새 서버 함수가 아직 적용되지 않은 서버면 [fallback]을 쓴다.
+  Future<T> _orOld<T>(String fn, Future<T> Function() call, T fallback) async {
+    try {
+      return await call();
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST202' || e.message.contains(fn)) return fallback;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<String> restart(
+    String prevRoomId,
+    String nickname, {
+    required CheckinMode mode,
+    required ChallengeKind kind,
+    required String title,
+    required int days,
+  }) async =>
+      await _db.rpc('restart_room', params: {
+        'prev': prevRoomId,
+        'nick': nickname,
+        'mode': mode.serverName,
+        'category': kind.serverName,
+        'title': title,
+        'days': days,
+      }) as String;
+
+  @override
+  Future<RoomRound> round(String roomId) => _orOld('room_round', () async {
+        final rows = await _db.rpc('room_round', params: {'r': roomId}) as List;
+        if (rows.isEmpty) return const RoomRound();
+        final j = rows.first as Map<String, dynamic>;
+        return RoomRound(round: (j['round'] as int?) ?? 1, nextRoomId: j['next_room_id'] as String?);
+      }, const RoomRound());
+
+  @override
+  Future<List<String>> finishedRoomIds() => _orOld('my_finished_room_ids', () async {
+        final rows = await _db.rpc('my_finished_room_ids') as List;
+        return [for (final r in rows) (r as Map<String, dynamic>)['id'] as String];
+      }, const <String>[]);
+
+  @override
+  Future<List<ChallengeHistory>> history() => _orOld('my_challenge_history', () async {
+        final rows = await _db.rpc('my_challenge_history') as List;
+        return [for (final r in rows) ChallengeHistory.fromJson(r as Map<String, dynamic>)];
+      }, const <ChallengeHistory>[]);
 
   @override
   Future<RoomSummary> summary(String roomId) async =>
