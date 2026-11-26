@@ -879,15 +879,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             )
           else ...[
-            _FriendRow(
-              joined: _joined,
-              onOpenRoom: _openRoom,
-              onInvite: () => _joined.length == 1 ? _openRoom(_joined.first.id) : _newChallenge(),
-            ),
-            const SizedBox(height: 16),
             for (final j in _joined) ...[
               _ChallengeCard(
                 room: j.summary,
+                members: j.members,
                 signedIn: true,
                 invited: false,
                 onTap: () => _openRoom(j.id),
@@ -1340,104 +1335,6 @@ class _JoinedRoom {
   final List<RoomMember> members;
 }
 
-/// 챌린지 탭 맨 위 친구 줄. 여러 방에 있는 친구를 한 줄에 모으고, 누르면 그 친구가 있는 방이 열린다.
-class _FriendRow extends StatelessWidget {
-  const _FriendRow(
-      {required this.joined, required this.onOpenRoom, required this.onInvite});
-
-  final List<_JoinedRoom> joined;
-  final ValueChanged<String> onOpenRoom;
-  final VoidCallback onInvite;
-
-  @override
-  Widget build(BuildContext context) {
-    final friends = <({String name, String label, String roomId})>[];
-    final seen = <String>{};
-    for (final j in joined) {
-      for (final m in j.members.where((m) => !m.isMe)) {
-        if (seen.add(m.displayName)) {
-          friends.add((name: m.nickname, label: m.displayName, roomId: j.id));
-        }
-      }
-    }
-    final together = joined.isNotEmpty;
-    final canInvite = joined.any((j) => j.members.length < 4) || !together;
-    return SizedBox(
-      height: 76,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          _FriendSlot(
-            label: '나',
-            onTap: together ? () => onOpenRoom(joined.first.id) : onInvite,
-            child: FriendAvatar(
-                name: joined.isEmpty
-                    ? '나'
-                    : joined.first.members.firstWhere((m) => m.isMe, orElse: () => joined.first.members.first).nickname,
-                index: 0,
-                ring: together ? JdColors.togetherFill : null),
-          ),
-          for (final (i, f) in friends.indexed)
-            _FriendSlot(
-              label: f.label,
-              onTap: () => onOpenRoom(f.roomId),
-              child: FriendAvatar(name: f.name, index: i + 1, ring: JdColors.togetherFill),
-            ),
-          if (canInvite)
-            _FriendSlot(
-              label: '초대',
-              onTap: onInvite,
-              child: Container(
-                width: 52,
-                height: 52,
-                decoration: ShapeDecoration(
-                  color: JdColors.cream,
-                  shape: PixelBorder(step: 5.2, steps: 2, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
-                ),
-                child: Icon(Icons.add, color: JdColors.woodText),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FriendSlot extends StatelessWidget {
-  const _FriendSlot(
-      {required this.label, required this.onTap, required this.child});
-
-  final String label;
-  final VoidCallback onTap;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          width: 56,
-          child: Column(
-            children: [
-              child,
-              const SizedBox(height: 6),
-              Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style:
-                      const TextStyle(fontSize: 12, color: Color(0xFF4A5056))),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 이번 주(월~일) 날짜 줄. 그날 마친 미션 수를 칸에 보여 준다.
 class _WeekStrip extends StatelessWidget {
   const _WeekStrip({
     required this.today,
@@ -1796,9 +1693,13 @@ class _ChallengeCard extends StatelessWidget {
       required this.signedIn,
       required this.invited,
       required this.onTap,
+      this.members = const [],
       this.another = false});
 
   final RoomSummary? room;
+
+  /// 이 방에 함께 있는 사람들. 카드 아래에 작은 얼굴로 보여 준다.
+  final List<RoomMember> members;
 
   /// 이미 참여 중인 방이 있고, 하나 더 시작하는 카드.
   final bool another;
@@ -1859,6 +1760,10 @@ class _ChallengeCard extends StatelessWidget {
                         color: JdColors.together,
                       ),
                     ],
+                    if (r != null && members.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      _MemberLine(members: members),
+                    ],
                   ],
                 ),
               ),
@@ -1868,6 +1773,39 @@ class _ChallengeCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 챌린지 카드 아래 함께하는 사람 줄: 작은 얼굴과 "철수와 함께".
+class _MemberLine extends StatelessWidget {
+  const _MemberLine({required this.members});
+
+  final List<RoomMember> members;
+
+  @override
+  Widget build(BuildContext context) {
+    final friends = members.where((m) => !m.isMe).map((m) => m.displayName).toList();
+    final text = friends.isEmpty
+        ? '친구를 초대해 보세요'
+        : friends.length <= 2
+            ? '${friends.join(', ')}와 함께'
+            : '${friends.take(2).join(', ')} 외 ${friends.length - 2}명과 함께';
+    return Row(
+      children: [
+        for (final (i, m) in members.take(4).indexed)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: ExcludeSemantics(child: FriendAvatar(name: m.nickname, index: i, size: 26)),
+          ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: JdColors.subtle)),
+        ),
+      ],
     );
   }
 }
