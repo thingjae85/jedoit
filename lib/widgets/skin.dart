@@ -167,7 +167,8 @@ class SeaBackdrop extends StatelessWidget {
     if (!JdColors.ocean) return child;
     return Stack(
       children: [
-        const Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _BackdropPainter()))),
+        const Positioned.fill(
+            child: IgnorePointer(child: RepaintBoundary(child: CustomPaint(painter: _BackdropPainter())))),
         child,
       ],
     );
@@ -209,11 +210,24 @@ class _BackdropPainter extends CustomPainter {
 
 /// 계속 도는 물결 시계. 움직임을 끄면 한 장면에 멈춘다.
 mixin _WaveClock<T extends StatefulWidget> on State<T>, SingleTickerProviderStateMixin<T> {
+  /// 한 바퀴(4초)를 몇 장면으로 나눌지. 초당 30장면이라 부드럽게 보이고, 같은 장면은 다시 그리지 않는다.
+  static const _frames = 120;
+
   late final AnimationController clock = AnimationController(vsync: this, duration: const Duration(seconds: 4));
+
+  /// 물결 위상(0~2π). 장면이 바뀔 때만 값이 바뀌어 그때만 다시 그린다.
+  final ValueNotifier<double> phase = ValueNotifier(0.2 * 2 * math.pi);
+  int _frame = -1;
 
   @override
   void initState() {
     super.initState();
+    clock.addListener(() {
+      final f = (clock.value * _frames).floor() % _frames;
+      if (f == _frame) return;
+      _frame = f;
+      phase.value = f / _frames * 2 * math.pi;
+    });
     if (SeaMotion.enabled) {
       clock.repeat();
     } else {
@@ -231,6 +245,7 @@ mixin _WaveClock<T extends StatefulWidget> on State<T>, SingleTickerProviderStat
   @override
   void dispose() {
     clock.dispose();
+    phase.dispose();
     super.dispose();
   }
 }
@@ -271,41 +286,45 @@ class _SeaTankState extends State<SeaTank> with SingleTickerProviderStateMixin, 
           color: const Color(0xFFF7FCFD),
           border: Border.all(color: JdColors.edgeStrong, width: 2),
         ),
-        child: ClipRect(
-          child: AnimatedBuilder(
-            animation: clock,
-            builder: (context, _) {
-              final t = clock.value * 2 * math.pi;
-              final inner = Size(widget.size.width - 4, widget.size.height - 4);
-              final surfaceY = inner.height - 10 - (inner.height - 22) * v;
-              final sharkW = widget.sharkWidth ?? inner.width * 0.47;
-              final sharkH = sharkW * SeaArt.shark.length / SeaArt.shark.first.length;
-              // 물마루 아래부터 모래 위까지가 상어가 들어갈 만큼 깊을 때만 상어를 띄운다.
-              final depth = inner.height - 10 - surfaceY - 6;
-              final roomy = depth >= sharkH + 4;
-              final bob = math.min(3.0, (depth - sharkH) / 2) * math.sin(t);
-              final sharkTop = surfaceY + 6 + (depth - sharkH) / 2 + bob;
-              return Stack(
-                children: [
-                  Positioned.fill(child: CustomPaint(painter: _TankPainter(t: t, level: v))),
-                  if (roomy)
-                    Positioned(
-                      left: (inner.width - sharkW) / 2,
-                      top: sharkTop,
-                      child: ExcludeSemantics(child: SeaShark(size: sharkH)),
-                    ),
-                  if (widget.label.isNotEmpty)
-                    Positioned(
-                      right: 6,
-                      top: 4,
-                      child: ExcludeSemantics(
-                        child: Text(widget.label,
-                            style: gameText(size: 18, color: JdColors.woodText).copyWith(fontWeight: FontWeight.w800)),
+        // 물결이 움직여도 주변 화면은 다시 그리지 않는다.
+        child: RepaintBoundary(
+          child: ClipRect(
+            child: AnimatedBuilder(
+              animation: phase,
+              builder: (context, _) {
+                final t = phase.value;
+                final inner = Size(widget.size.width - 4, widget.size.height - 4);
+                final surfaceY = inner.height - 10 - (inner.height - 22) * v;
+                final sharkW = widget.sharkWidth ?? inner.width * 0.47;
+                final sharkH = sharkW * SeaArt.shark.length / SeaArt.shark.first.length;
+                // 물마루 아래부터 모래 위까지가 상어가 들어갈 만큼 깊을 때만 상어를 띄운다.
+                final depth = inner.height - 10 - surfaceY - 6;
+                final roomy = depth >= sharkH + 4;
+                final bob = math.min(3.0, (depth - sharkH) / 2) * math.sin(t);
+                final sharkTop = surfaceY + 6 + (depth - sharkH) / 2 + bob;
+                return Stack(
+                  children: [
+                    Positioned.fill(child: CustomPaint(painter: _TankPainter(t: t, level: v))),
+                    if (roomy)
+                      Positioned(
+                        left: (inner.width - sharkW) / 2,
+                        top: sharkTop,
+                        child: ExcludeSemantics(child: RepaintBoundary(child: SeaShark(size: sharkH))),
                       ),
-                    ),
-                ],
-              );
-            },
+                    if (widget.label.isNotEmpty)
+                      Positioned(
+                        right: 6,
+                        top: 4,
+                        child: ExcludeSemantics(
+                          child: Text(widget.label,
+                              style:
+                                  gameText(size: 18, color: JdColors.woodText).copyWith(fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -320,53 +339,78 @@ class _TankPainter extends CustomPainter {
   final double t;
   final double level;
 
+  // 칸마다 그리지 않고 같은 색이 이어지는 세로 줄을 한 번에 그린다 (그리는 횟수를 줄여 스크롤이 부드럽게).
   @override
   void paint(Canvas canvas, Size size) {
     const u = 2.0;
     final w = (size.width / u).floor();
     final h = (size.height / u).floor();
     final p = Paint()..isAntiAlias = false;
-    void dot(int x, int y, Color c) {
-      p.color = c;
-      canvas.drawRect(Rect.fromLTWH(x * u, y * u, u, u), p);
+    // 색마다 한 경로에 모았다가 마지막에 색별로 한 번씩만 그린다.
+    final batch = <Color, Path>{};
+    void run(int x, int y0, int y1, Color c) {
+      if (y1 <= y0) return;
+      (batch[c] ??= Path()).addRect(Rect.fromLTRB(x * u, y0 * u, (x + 1) * u, y1 * u));
     }
 
-    final base = (h - 5 - (h - 11) * level).round();
-    int surf(int i) => base + (2.2 * math.sin(i * 0.17 + t)).round();
-    for (var i = 0; i < w; i++) {
-      final b = base + (1.6 * math.sin(i * 0.21 - t + 2)).round() - 1;
-      for (var y = b; y < h; y++) {
-        dot(i, y, SeaArt.waterBack);
+    void flush() {
+      for (final e in batch.entries) {
+        canvas.drawPath(e.value, p..color = e.key);
       }
-      final s = surf(i);
-      for (var y = s; y < h; y++) {
-        dot(i, y, SeaArt.water[((y - base) / 9).floor().clamp(0, 4)]);
-      }
-      dot(i, s, SeaArt.foam);
-      if ((i + (t / (2 * math.pi) * 11).floor()) % 11 < 3) dot(i, s + 1, const Color(0xFFC8EEF5));
+      batch.clear();
     }
-    // 빛줄기
+
+    final sandTop = h - 5;
+    final base = (h - 5 - (h - 11) * level).round();
+    // 그리는 순서(아래부터): 뒤 물결, 물 띠, 모래, 물마루, 해초, 거품
+    for (final c in [
+      SeaArt.waterBack,
+      ...SeaArt.water,
+      SeaArt.sandDeep,
+      SeaArt.sand,
+      SeaArt.foam,
+      const Color(0xFFC8EEF5)
+    ]) {
+      batch[c] = Path();
+    }
+    int surf(int i) => base + (2.2 * math.sin(i * 0.17 + t)).round();
+    final foamShift = (t / (2 * math.pi) * 11).floor();
+    for (var i = 0; i < w; i++) {
+      final s = surf(i);
+      final b = math.min(s, base + (1.6 * math.sin(i * 0.21 - t + 2)).round() - 1);
+      run(i, b, s, SeaArt.waterBack);
+      // 깊이에 따라 9칸마다 한 톤씩 짙어지는 띠
+      var y = s;
+      while (y < sandTop) {
+        final band = ((y - base) / 9).floor().clamp(0, 4);
+        final end = band >= 4 ? sandTop : math.min(sandTop, base + (band + 1) * 9);
+        run(i, y, math.max(end, y + 1), SeaArt.water[band]);
+        y = math.max(end, y + 1);
+      }
+      run(i, s, s + 1, SeaArt.foam);
+      if ((i + foamShift) % 11 < 3) run(i, s + 1, s + 2, const Color(0xFFC8EEF5));
+      final sy = sandTop + (i % 9 < 4 ? 0 : 1);
+      run(i, sandTop, sy, SeaArt.water[4]);
+      run(i, sy, sy + 1, SeaArt.sandDeep);
+      run(i, sy + 1, h, SeaArt.sand);
+    }
+    flush();
+    // 빛줄기: 세 줄기를 비스듬한 띠로
     p.color = Colors.white.withValues(alpha: 0.13);
     for (var r = 0; r < 3; r++) {
       final ox = 10 + r * 24 + (2 * math.sin(t + r)).round();
-      for (var y = base + 3; y < h - 6; y++) {
-        canvas.drawRect(Rect.fromLTWH((ox + ((y - base) / 3).floor()) * u, y * u, u * 3, u), p);
-      }
-    }
-    // 모래
-    for (var i = 0; i < w; i++) {
-      final sy = h - 5 + (i % 9 < 4 ? 0 : 1);
-      for (var y = sy; y < h; y++) {
-        dot(i, y, y == sy ? SeaArt.sandDeep : SeaArt.sand);
+      for (var y = base + 3; y < h - 6; y += 3) {
+        canvas.drawRect(Rect.fromLTWH((ox + ((y - base) / 3).floor()) * u, y * u, u * 3, u * 3), p);
       }
     }
     // 해초
-    for (final (x0, scale) in [(4, 1), (w - 8, 1)]) {
+    for (final x0 in [4, w - 8]) {
       for (var y = 0; y < SeaArt.weedRows.length; y++) {
         final row = SeaArt.weedRows[y];
         for (var x = 0; x < row.length; x++) {
           if (row[x] == '.') continue;
-          dot(x0 + x * scale, h - 5 - SeaArt.weedRows.length + y, row[x] == 'g' ? SeaArt.weed : SeaArt.weedDeep);
+          final yy = sandTop - SeaArt.weedRows.length + y;
+          run(x0 + x, yy, yy + 1, row[x] == 'g' ? SeaArt.weed : SeaArt.weedDeep);
         }
       }
     }
@@ -375,11 +419,11 @@ class _TankPainter extends CustomPainter {
       final prog = (t / (2 * math.pi) + o / 5) % 1;
       final by = ((h - 8) - prog * (h - 8 - base - 3)).round();
       final x = (w * bx).round() + math.sin(t * 2 + o).round();
-      dot(x, by, SeaArt.foam);
-      dot(x + 1, by - 1, SeaArt.foam);
-      dot(x - 1, by - 1, SeaArt.foam);
-      dot(x, by - 2, SeaArt.foam);
+      run(x, by - 2, by + 1, SeaArt.foam);
+      run(x - 1, by - 1, by, SeaArt.foam);
+      run(x + 1, by - 1, by, SeaArt.foam);
     }
+    flush();
   }
 
   @override
@@ -427,9 +471,9 @@ class _SeaTubeButtonState extends State<SeaTubeButton> with SingleTickerProvider
               height: widget.height,
               width: double.infinity,
               child: AnimatedBuilder(
-                animation: clock,
+                animation: phase,
                 builder: (context, child) => CustomPaint(
-                  painter: _TubePainter(t: clock.value * 2 * math.pi, edge: const Color(0xFF4E93A6)),
+                  painter: _TubePainter(t: phase.value, edge: const Color(0xFF4E93A6)),
                   child: child,
                 ),
                 child: Center(
@@ -464,15 +508,25 @@ class _TubePainter extends CustomPainter {
   final double t;
   final Color edge;
 
+  // 유리관 모양으로 잘라 두고, 물은 세로 줄 단위로 한 번에 그린다.
   @override
   void paint(Canvas canvas, Size size) {
     const u = 2.0;
     final w = (size.width / u).floor();
     final h = (size.height / u).floor();
     final p = Paint()..isAntiAlias = false;
-    void dot(int x, int y, Color c) {
-      p.color = c;
-      canvas.drawRect(Rect.fromLTWH(x * u, y * u, u, u), p);
+    // 색마다 한 경로에 모았다가 마지막에 색별로 한 번씩만 그린다.
+    final batch = <Color, Path>{};
+    void run(int x, int y0, int y1, Color c) {
+      if (y1 <= y0) return;
+      (batch[c] ??= Path()).addRect(Rect.fromLTRB(x * u, y0 * u, (x + 1) * u, y1 * u));
+    }
+
+    void flush() {
+      for (final e in batch.entries) {
+        canvas.drawPath(e.value, p..color = e.key);
+      }
+      batch.clear();
     }
 
     int ins(int y) {
@@ -486,60 +540,80 @@ class _TubePainter extends CustomPainter {
                   : 0;
     }
 
-    bool inside(int x, int y) => y >= 0 && y < h && x >= ins(y) && x < w - ins(y);
-    final base = (h * 0.56).round();
-    int surf(int i) => base + (1.3 * math.sin(i * 0.16 + t)).round() + (math.sin(i * 0.05 - t) > 0.6 ? -1 : 0);
-
-    // 유리
+    final tube = Path();
     for (var y = 0; y < h; y++) {
-      for (var x = ins(y); x < w - ins(y); x++) {
-        dot(x, y, const Color(0xEBE9F7FA));
-      }
+      tube.addRect(Rect.fromLTRB(ins(y) * u, y * u, (w - ins(y)) * u, (y + 1) * u));
     }
-    // 뒤 물결
-    for (var i = 0; i < w; i++) {
-      final b = base + (1.1 * math.sin(i * 0.22 - t + 2)).round() - 1;
-      for (var y = b; y < h; y++) {
-        if (inside(i, y)) dot(i, y, SeaArt.waterBack);
-      }
+    canvas.save();
+    canvas.clipPath(tube, doAntiAlias: false);
+    p.color = const Color(0xEBE9F7FA);
+    canvas.drawRect(Offset.zero & size, p);
+
+    final base = (h * 0.56).round();
+    for (final c in [
+      SeaArt.waterBack,
+      SeaArt.blue,
+      SeaArt.blueDeep,
+      ...SeaArt.water.take(4),
+      SeaArt.foam,
+      const Color(0xFFC8EEF5),
+      Colors.white
+    ]) {
+      batch[c] = Path();
     }
-    // 지느러미 (앞 물결 뒤)
+    int surf(int i) => base + (1.3 * math.sin(i * 0.16 + t)).round() + (math.sin(i * 0.05 - t) > 0.6 ? -1 : 0);
     final fx = ((t / (2 * math.pi)) % 1 * (w - 30)).round() + 10;
     final fs = surf(fx + 3);
-    for (var ry = 0; ry < SeaArt.fin.length; ry++) {
-      final row = SeaArt.fin[ry];
-      for (var rx = 0; rx < row.length; rx++) {
-        if (row[rx] == '.') continue;
-        dot(fx + rx, fs - SeaArt.fin.length + ry + 1, row[rx] == 'm' ? SeaArt.blue : SeaArt.blueDeep);
-      }
-    }
-    // 앞 물결
+    final foamShift = (t / (2 * math.pi) * 14).floor();
     for (var i = 0; i < w; i++) {
       final s = surf(i);
-      for (var y = s; y < h; y++) {
-        if (inside(i, y)) dot(i, y, SeaArt.water[((y - s) / 4).floor().clamp(0, 3)]);
+      final b = math.min(s, base + (1.1 * math.sin(i * 0.22 - t + 2)).round() - 1);
+      run(i, b, s, SeaArt.waterBack);
+      // 지느러미 (앞 물결 뒤)
+      final rx = i - fx;
+      if (rx >= 0 && rx < 8) {
+        for (var ry = 0; ry < SeaArt.fin.length; ry++) {
+          final row = SeaArt.fin[ry];
+          if (rx >= row.length || row[rx] == '.') continue;
+          final y = fs - SeaArt.fin.length + ry + 1;
+          run(i, y, y + 1, row[rx] == 'm' ? SeaArt.blue : SeaArt.blueDeep);
+        }
       }
-      if (inside(i, s)) {
-        dot(i, s, SeaArt.foam);
-        if ((i + (t / (2 * math.pi) * 14).floor()) % 13 < 2) dot(i, s + 1, const Color(0xFFC8EEF5));
-      }
+      run(i, s, s + 4, SeaArt.water[0]);
+      run(i, s + 4, s + 8, SeaArt.water[1]);
+      run(i, s + 8, s + 12, SeaArt.water[2]);
+      run(i, s + 12, h, SeaArt.water[3]);
+      run(i, s, s + 1, SeaArt.foam);
+      if ((i + foamShift) % 13 < 2) run(i, s + 1, s + 2, const Color(0xFFC8EEF5));
     }
     for (final d in [-2, -1, 9, 10]) {
-      dot(fx + d, surf(fx + d) - 1, Colors.white);
+      final y = surf(fx + d) - 1;
+      run(fx + d, y, y + 1, Colors.white);
     }
-    // 거품
     for (final (bx, o) in [(0.2, 0.0), (0.55, 2.0), (0.8, 4.0)]) {
       final prog = ((t / (2 * math.pi)) * 2 + o / 5) % 1;
-      dot((w * bx).round(), (h - 3 - prog * (h - 3 - base - 2)).round(), SeaArt.foam);
+      final y = (h - 3 - prog * (h - 3 - base - 2)).round();
+      run((w * bx).round(), y, y + 1, SeaArt.foam);
     }
-    // 유리 반사광과 테두리
-    for (var i = 6; i < w - 6; i++) {
-      if (i % 23 < 15) dot(i, 2, const Color(0xF2FFFFFF));
+    flush();
+    // 반사광
+    p.color = const Color(0xF2FFFFFF);
+    for (var i = 6; i < w - 6; i += 23) {
+      canvas.drawRect(Rect.fromLTRB(i * u, 2 * u, math.min(i + 15, w - 6) * u, 3 * u), p);
     }
+    canvas.restore();
+    // 테두리: 줄마다 양 끝 칸, 맨 위·아래 줄, 모서리 계단
+    p.color = edge;
     for (var y = 0; y < h; y++) {
-      for (var x = ins(y); x < w - ins(y); x++) {
-        if (!inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1)) dot(x, y, edge);
+      final a = ins(y);
+      if (y == 0 || y == h - 1) {
+        canvas.drawRect(Rect.fromLTRB(a * u, y * u, (w - a) * u, (y + 1) * u), p);
+        continue;
       }
+      final prev = math.max(ins(y - 1), ins(y + 1));
+      final l = math.max(prev - 1, a);
+      canvas.drawRect(Rect.fromLTRB(a * u, y * u, (l + 1) * u, (y + 1) * u), p);
+      canvas.drawRect(Rect.fromLTRB((w - l - 1) * u, y * u, (w - a) * u, (y + 1) * u), p);
     }
   }
 
