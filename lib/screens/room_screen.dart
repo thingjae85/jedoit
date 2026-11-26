@@ -16,6 +16,7 @@ import '../widgets/jd_widgets.dart';
 import '../widgets/room_feed.dart';
 import 'chat_screen.dart';
 import 'checkin_screen.dart';
+import 'room_entry_screen.dart';
 
 /// 초대 링크: 앱 주소에 `?invite=코드`를 붙인다. OAuth의 `code` 파라미터와 겹치지 않는다.
 String inviteLink(Uri base, String code) => Uri(
@@ -66,6 +67,7 @@ class _RoomScreenState extends State<RoomScreen> {
   List<RoomMember> _members = [];
   List<MyCheckin> _mine = [];
   List<FeedItem> _feed = [];
+  RoomRound _round = const RoomRound();
   bool _loadFailed = false;
   bool _busy = false;
   Timer? _timer;
@@ -194,10 +196,15 @@ class _RoomScreenState extends State<RoomScreen> {
           feed = await widget.rooms.feed(widget.roomId);
         } catch (_) {}
       }
+      var round = _round;
+      try {
+        round = await widget.rooms.round(widget.roomId);
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _summary = s;
         _members = m;
+        _round = round;
         _mine = mine;
         _feed = feed;
         _loadFailed = false;
@@ -353,7 +360,9 @@ class _RoomScreenState extends State<RoomScreen> {
     final summary = _summary;
     return Scaffold(
       appBar: AppBar(
-        title: Text(summary == null ? '챌린지' : '${summary.challengeName} 챌린지'),
+        title: Text(summary == null
+            ? '챌린지'
+            : '${_round.round > 1 ? '${_round.round}회차 · ' : ''}${summary.challengeName} 챌린지'),
         actions: [
           if (_chatOpen(summary))
             IconButton(
@@ -528,6 +537,20 @@ class _RoomScreenState extends State<RoomScreen> {
             onPressed: _busy || _members.length < 2 ? null : _confirmStart,
             child: Text(_members.length < 2 ? '2명 이상 모이면 시작할 수 있어요' : '이 인원으로 시작 확정'),
           ),
+        if (status == RoomStatus.finished && me != null)
+          _round.nextRoomId != null
+              ? FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: JdColors.together),
+                  onPressed: () => _openRoom(_round.nextRoomId!),
+                  icon: const Icon(Icons.arrow_forward),
+                  label: Text('${_round.round + 1}회차 방으로 가기'),
+                )
+              : FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: JdColors.together),
+                  onPressed: _busy ? null : () => _restart(s, me),
+                  icon: const Icon(Icons.replay),
+                  label: const Text('같은 친구들과 다시 하기'),
+                ),
         if (status != RoomStatus.finished && me != null)
           TextButton(
             onPressed: _busy ? null : _leave,
@@ -536,6 +559,21 @@ class _RoomScreenState extends State<RoomScreen> {
       ],
     );
   }
+
+  /// 다시 하기: 지난 설정을 채운 화면에서 고친 뒤 다음 회차 방을 만들고 그 방으로 간다.
+  Future<void> _restart(RoomSummary s, RoomMember me) async {
+    final id = await Navigator.of(context).push<String>(MaterialPageRoute(
+      builder: (_) => RoomEntryScreen(rooms: widget.rooms, restartFrom: s, nickname: me.nickname),
+    ));
+    if (id == null || !mounted) return;
+    await _openRoom(id);
+  }
+
+  /// 이 방 화면을 다음 회차 방 화면으로 바꾼다.
+  Future<void> _openRoom(String id) => Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+        builder: (_) => RoomScreen(
+            rooms: widget.rooms, roomId: id, now: widget.now, autoRefresh: widget.autoRefresh, chat: widget.chat),
+      ));
 
   String _statusDetail(RoomSummary s, RoomStatus status) => switch (status) {
         RoomStatus.recruiting =>
@@ -547,8 +585,8 @@ class _RoomScreenState extends State<RoomScreen> {
             CheckinMode.light => '한 줄로',
           }} 인증해요. ${formatDateTime(s.endsAt!.toLocal())}에 끝나요.',
         RoomStatus.finished => s.goalReachedAt != null
-            ? '공동 목표를 달성했어요! 진행도와 배지는 그대로 남아요.'
-            : '쌓인 진행도와 인증 기록은 그대로 남아요.',
+            ? '공동 목표를 달성했어요! 진행도와 단톡방, 인증 기록은 기록 탭에서 언제든 다시 볼 수 있어요.'
+            : '쌓인 진행도와 단톡방, 인증 기록은 기록 탭에서 언제든 다시 볼 수 있어요.',
         RoomStatus.cancelled => '새 방을 만들 수 있어요.',
         RoomStatus.expired => '새 방을 만들 수 있어요.',
       };

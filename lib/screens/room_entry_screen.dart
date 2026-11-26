@@ -7,12 +7,18 @@ import '../widgets/jd_widgets.dart';
 /// 방 만들기 또는 초대 코드로 참가하기. 방 전용 닉네임(2~10자)을 함께 받는다.
 /// 성공하면 방 ID를 반환하며 닫힌다.
 class RoomEntryScreen extends StatefulWidget {
-  const RoomEntryScreen({super.key, required this.rooms, this.inviteCode});
+  const RoomEntryScreen({super.key, required this.rooms, this.inviteCode, this.restartFrom, this.nickname});
 
   final RoomService rooms;
 
   /// 초대 링크로 들어왔으면 참가 화면으로 시작한다.
   final String? inviteCode;
+
+  /// 끝난 방에서 "다시 하기"로 왔으면 그 방. 설정을 그대로 채워 두고 고칠 수 있게 한다.
+  final RoomSummary? restartFrom;
+
+  /// 처음부터 채워 둘 닉네임 (다시 하기에서는 지난 회차 닉네임).
+  final String? nickname;
 
   @override
   State<RoomEntryScreen> createState() => _RoomEntryScreenState();
@@ -31,9 +37,20 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
   int _days = 3;
   String? _error;
 
+  bool get _restart => widget.restartFrom != null;
+
   @override
   void initState() {
     super.initState();
+    _nickname.text = widget.nickname ?? '';
+    final prev = widget.restartFrom;
+    if (prev != null) {
+      _joining = false;
+      _kind = prev.kind;
+      _mode = prev.checkinMode;
+      _title.text = prev.title;
+      _days = prev.days.clamp(minChallengeDays, maxChallengeDays);
+    }
     if (widget.inviteCode != null) {
       _code.text = widget.inviteCode!;
       _loadPreview();
@@ -96,9 +113,12 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
     });
     try {
       final nick = _nickname.text.trim();
-      final id = _joining
-          ? await widget.rooms.join(_code.text.trim().toUpperCase(), nick)
-          : await widget.rooms.create(nick, mode: _mode, kind: _kind, title: _title.text.trim(), days: _days);
+      final prev = widget.restartFrom;
+      final id = prev != null
+          ? await widget.rooms.restart(prev.id, nick, mode: _mode, kind: _kind, title: _title.text.trim(), days: _days)
+          : _joining
+              ? await widget.rooms.join(_code.text.trim().toUpperCase(), nick)
+              : await widget.rooms.create(nick, mode: _mode, kind: _kind, title: _title.text.trim(), days: _days);
       if (mounted) Navigator.of(context).pop(id);
     } catch (e) {
       if (!mounted) return;
@@ -114,10 +134,14 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
     final theme = Theme.of(context);
     final preview = _preview;
     return Scaffold(
-      appBar: AppBar(title: Text(_joining ? '초대받은 방 참가' : '챌린지 방 만들기')),
+      appBar: AppBar(title: Text(_restart ? '다시 하기' : (_joining ? '초대받은 방 참가' : '챌린지 방 만들기'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (_restart)
+            Text('지난번 친구들과 같은 설정으로 다시 시작해요. 바꾸고 싶은 것만 고치세요.',
+                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700))
+          else
           SegmentedButton<bool>(
             segments: const [
               ButtonSegment(value: false, label: Text('방 만들기'), icon: Icon(Icons.add_home)),
@@ -128,7 +152,9 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            _joining
+            _restart
+                ? '방이 만들어지면 친구들이 함께 들어와 있어요. 방장이 시작을 확정하면 $_days일 챌린지가 시작돼요.'
+                : _joining
                 ? '친구가 보낸 초대 코드 8자리로 방에 들어가요.'
                 : '2~4명이 $_days일 동안 같은 챌린지를 하루 한 번씩 인증해요. 방을 만들고 친구를 초대하세요.',
             style: theme.textTheme.bodyMedium,
@@ -278,7 +304,7 @@ class _RoomEntryScreenState extends State<RoomEntryScreen> {
           const SizedBox(height: 16),
           FilledButton(
             onPressed: _canSubmit ? _submit : null,
-            child: Text(_busy ? '처리 중...' : (_joining ? '참가하기' : '방 만들기')),
+            child: Text(_busy ? '처리 중...' : (_restart ? '다시 하기 방 만들기' : (_joining ? '참가하기' : '방 만들기'))),
           ),
         ],
       ),

@@ -72,6 +72,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 내가 참여 중인 챌린지 방들 (최근에 만든 방부터).
   List<_JoinedRoom> _joined = [];
 
+  /// 최근에 끝났고 아직 다시 하지 않은 방들. 여기서 바로 다시 할 수 있다.
+  List<_JoinedRoom> _finished = [];
+
   late final SpaceStore _space = widget.space ?? SpaceStore();
   SpacePrefs _prefs = const SpacePrefs();
 
@@ -211,7 +214,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadRoom() async {
     final rooms = widget.rooms;
     if (rooms == null || !(widget.account?.signedIn ?? false)) {
-      if (_joined.isNotEmpty && mounted) setState(() => _joined = []);
+      if ((_joined.isNotEmpty || _finished.isNotEmpty) && mounted) {
+        setState(() {
+          _joined = [];
+          _finished = [];
+        });
+      }
       return;
     }
     try {
@@ -220,6 +228,12 @@ class _HomeScreenState extends State<HomeScreen> {
           _JoinedRoom(id, await rooms.summary(id), await rooms.members(id))));
       if (!mounted) return;
       setState(() => _joined = joined);
+    } catch (_) {}
+    try {
+      final ids = await rooms.finishedRoomIds();
+      final finished = await Future.wait(ids.map((id) async =>
+          _JoinedRoom(id, await rooms.summary(id), const [])));
+      if (mounted) setState(() => _finished = finished);
     } catch (_) {}
   }
 
@@ -647,6 +661,8 @@ class _HomeScreenState extends State<HomeScreen> {
           repository: widget.repository,
           initialDay: _recordsDay,
           onPickMission: () => _selectTab(_homeTab),
+          loadChallenges: _challengeAvailable && widget.account!.signedIn ? widget.rooms!.history : null,
+          onOpenChallenge: _openRoom,
         ),
       _homeTab => _homeBody(context),
       _challengeTab => _challengeBody(context),
@@ -878,6 +894,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Text('챌린지는 한 번에 $maxOpenRooms개까지 함께할 수 있어요. 하나가 끝나면 새로 시작해 보세요.',
                     style: TextStyle(fontSize: 13, color: JdColors.subtle)),
               ),
+            if (_finished.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              const Text('최근에 끝난 챌린지',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              const Text('결과를 보고, 같은 친구들과 바로 다시 할 수 있어요. 지난 챌린지는 모두 기록 탭에 있어요.',
+                  style: TextStyle(fontSize: 13, color: JdColors.subtle)),
+              const SizedBox(height: 10),
+              for (final j in _finished) ...[
+                _ChallengeCard(
+                  room: j.summary,
+                  signedIn: true,
+                  invited: false,
+                  onTap: () => _openRoom(j.id),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ],
           ],
         ],
       ),

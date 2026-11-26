@@ -6,6 +6,8 @@ import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jeoduit/models/room.dart';
 import 'package:jeoduit/screens/checkin_screen.dart';
+import 'package:jeoduit/screens/records_screen.dart';
+import 'package:jeoduit/services/record_repository.dart';
 import 'package:jeoduit/screens/room_entry_screen.dart';
 import 'package:jeoduit/screens/room_screen.dart';
 import 'package:jeoduit/services/chat_service.dart';
@@ -97,6 +99,22 @@ class _FakeRooms implements RoomService {
         : '$nickname:${mode.serverName}:${kind.serverName}:$title:$days');
     return 'room-1';
   }
+
+  final restarted = <String>[];
+  RoomRound roundInfo = const RoomRound();
+  @override
+  Future<String> restart(String prevRoomId, String nickname,
+      {required CheckinMode mode, required ChallengeKind kind, required String title, required int days}) async {
+    restarted.add('$prevRoomId:$nickname:${mode.serverName}:${kind.serverName}:$title:$days');
+    return 'room-2';
+  }
+
+  @override
+  Future<RoomRound> round(String roomId) async => roundInfo;
+  @override
+  Future<List<String>> finishedRoomIds() async => [];
+  @override
+  Future<List<ChallengeHistory>> history() async => [];
 
   @override
   Future<String> join(String code, String nickname) async {
@@ -843,5 +861,90 @@ void main() {
     await tester.tap(find.byKey(const Key('startToday')));
     await tester.pumpAndSettle();
     expect(rooms.starts, [true, false]);
+  });
+
+  testWidgets('끝난 방: 같은 친구들과 다시 하기는 지난 설정을 채워 두고, 고친 값으로 다음 회차를 만든다', (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final rooms = _FakeRooms()
+      ..current = RoomSummary(
+        id: 'room-1',
+        status: RoomStatus.finished,
+        inviteCode: 'ABCD2345',
+        isHost: false,
+        recruitExpiresAt: _now.subtract(const Duration(days: 9)),
+        startsAt: _now.subtract(const Duration(days: 6)),
+        endsAt: _now.subtract(const Duration(days: 1)),
+        startCount: 2,
+        activeCount: 2,
+        totalElements: 6,
+        goal: 6,
+        earned: 5,
+        validCount: 5,
+        checkinMode: CheckinMode.light,
+        kind: ChallengeKind.reading,
+        title: '책 10쪽 읽기',
+        days: 5,
+      );
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-1', now: () => _now, autoRefresh: null)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('기록 탭에서 언제든 다시 볼 수 있어요'), findsOneWidget);
+
+    await tester.tap(find.text('같은 친구들과 다시 하기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(RoomEntryScreen), findsOneWidget);
+    // 지난 설정과 닉네임이 채워져 있고, 코드로 참가 칸은 없다.
+    expect(find.text('코드로 참가'), findsNothing);
+    expect(find.text('5일'), findsOneWidget);
+    expect(tester.widget<TextField>(find.widgetWithText(TextField, '이 방에서 쓸 닉네임')).controller!.text, '명재');
+    await tester.tap(find.byTooltip('하루 늘리기'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '다시 하기 방 만들기'));
+    await tester.pumpAndSettle();
+    expect(rooms.restarted, ['room-1:명재:light:reading:책 10쪽 읽기:6']);
+    expect(find.byType(RoomEntryScreen), findsNothing);
+  });
+
+  testWidgets('다음 회차가 이미 열렸으면 그 방으로 가는 버튼과 회차가 보인다', (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final rooms = _FakeRooms()
+      ..current = _summary(status: RoomStatus.finished, earned: 3, active: 2, n0: 2, goal: 4, total: 6)
+      ..roundInfo = const RoomRound(round: 2, nextRoomId: 'room-3');
+    await tester.pumpWidget(_wrap(RoomScreen(rooms: rooms, roomId: 'room-2', now: () => _now, autoRefresh: null)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2회차 · '), findsOneWidget);
+    expect(find.text('3회차 방으로 가기'), findsOneWidget);
+    expect(find.text('같은 친구들과 다시 하기'), findsNothing);
+  });
+
+  testWidgets('기록 탭: 챌린지 칸에서 지난 챌린지를 모두 보고, 누르면 그 방을 연다', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final opened = <String>[];
+    await tester.pumpWidget(_wrap(RecordsScreen(
+      repository: LocalRecordRepository(),
+      loadChallenges: () async => [
+        const ChallengeHistory(
+            id: 'r2', round: 2, status: RoomStatus.recruiting, kind: ChallengeKind.reading,
+            title: '책 10쪽 읽기', days: 5, earned: 0, memberCount: 2),
+        ChallengeHistory(
+            id: 'r1', round: 1, status: RoomStatus.active, kind: ChallengeKind.reading,
+            title: '책 10쪽 읽기', days: 5, startsAt: DateTime(2026, 11, 1), endsAt: DateTime(2026, 11, 6),
+            goal: 6, earned: 6, goalReachedAt: DateTime(2026, 11, 5), memberCount: 2),
+      ],
+      onOpenChallenge: (id) async => opened.add(id),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('챌린지'));
+    await tester.pumpAndSettle();
+    expect(find.text('2회차 · 5일 책 10쪽 읽기'), findsOneWidget);
+    expect(find.text('5일 책 10쪽 읽기'), findsOneWidget);
+    expect(find.text('목표 달성'), findsOneWidget);
+    expect(find.text('친구 모집 중'), findsOneWidget);
+    await tester.tap(find.text('5일 책 10쪽 읽기'));
+    await tester.pumpAndSettle();
+    expect(opened, ['r1']);
   });
 }

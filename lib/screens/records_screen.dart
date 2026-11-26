@@ -4,13 +4,21 @@ import 'package:flutter/material.dart';
 
 import '../models/mission.dart';
 import '../models/mission_record.dart';
+import '../models/room.dart';
 import '../services/record_repository.dart';
 import '../theme.dart';
 import '../widgets/jd_widgets.dart';
 
 /// 개인 기록 목록. 기록 하나 삭제·전체 삭제는 확인창을 거친다.
 class RecordsScreen extends StatefulWidget {
-  const RecordsScreen({super.key, required this.repository, this.onPickMission, this.initialDay});
+  const RecordsScreen({
+    super.key,
+    required this.repository,
+    this.onPickMission,
+    this.initialDay,
+    this.loadChallenges,
+    this.onOpenChallenge,
+  });
 
   final RecordRepository repository;
 
@@ -19,6 +27,12 @@ class RecordsScreen extends StatefulWidget {
 
   /// 처음 고를 날짜. 없으면 오늘.
   final DateTime? initialDay;
+
+  /// 내가 참여한 챌린지들을 불러온다. 없으면(로그인 전 등) 챌린지 기록 칸을 숨긴다.
+  final Future<List<ChallengeHistory>> Function()? loadChallenges;
+
+  /// 챌린지 하나를 누르면 그 방 화면(진행도·단톡방·인증)을 연다.
+  final Future<void> Function(String roomId)? onOpenChallenge;
 
   @override
   State<RecordsScreen> createState() => _RecordsScreenState();
@@ -30,6 +44,11 @@ class _RecordsScreenState extends State<RecordsScreen> {
   bool _deleting = false;
   late DateTime _selected = dayOf(widget.initialDay ?? DateTime.now());
   late DateTime _month = DateTime(_selected.year, _selected.month);
+
+  /// 기록 탭에서 지금 보는 칸: false면 내 미션, true면 챌린지.
+  bool _showChallenges = false;
+  List<ChallengeHistory>? _challenges; // null이면 불러오는 중
+  bool _challengesFailed = false;
 
   @override
   void initState() {
@@ -48,6 +67,28 @@ class _RecordsScreenState extends State<RecordsScreen> {
     } catch (_) {
       if (mounted) setState(() => _loadFailed = true);
     }
+  }
+
+  Future<void> _loadChallenges() async {
+    final load = widget.loadChallenges;
+    if (load == null) return;
+    setState(() => _challengesFailed = false);
+    try {
+      final list = await load();
+      if (mounted) setState(() => _challenges = list);
+    } catch (_) {
+      if (mounted) setState(() => _challengesFailed = true);
+    }
+  }
+
+  void _pickView(bool challenges) {
+    setState(() => _showChallenges = challenges);
+    if (challenges && _challenges == null) _loadChallenges();
+  }
+
+  Future<void> _openChallenge(ChallengeHistory c) async {
+    await widget.onOpenChallenge?.call(c.id);
+    if (mounted) await _loadChallenges();
   }
 
   Future<void> _remove(Future<void> Function() action) async {
@@ -119,11 +160,12 @@ class _RecordsScreenState extends State<RecordsScreen> {
   @override
   Widget build(BuildContext context) {
     final records = _records;
+    final body = _showChallenges ? _challengeList() : _missionBody(records);
     return Scaffold(
       appBar: AppBar(
         title: const Text('내 기록'),
         actions: [
-          if (records != null && records.isNotEmpty)
+          if (!_showChallenges && records != null && records.isNotEmpty)
             IconButton(
               tooltip: '전체 삭제',
               icon: const Icon(Icons.delete_sweep_outlined),
@@ -131,7 +173,30 @@ class _RecordsScreenState extends State<RecordsScreen> {
             ),
         ],
       ),
-      body: _loadFailed
+      body: widget.loadChallenges == null
+          ? body
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: false, label: Text('내 미션'), icon: Icon(Icons.spa_outlined)),
+                      ButtonSegment(value: true, label: Text('챌린지'), icon: Icon(Icons.groups_outlined)),
+                    ],
+                    selected: {_showChallenges},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (v) => _pickView(v.first),
+                  ),
+                ),
+                Expanded(child: body),
+              ],
+            ),
+    );
+  }
+
+  Widget _missionBody(List<MissionRecord>? records) {
+    return _loadFailed
           ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
               const Text('기록을 불러오지 못했어요'),
               TextButton(onPressed: _load, child: const Text('다시 불러오기')),
@@ -154,7 +219,37 @@ class _RecordsScreenState extends State<RecordsScreen> {
                     ),
                   ]),
                 ))
-              : _calendar(records),
+              : _calendar(records);
+  }
+
+  /// 내가 참여한 모든 챌린지. 누르면 방 화면에서 진행도·단톡방·인증을 다시 볼 수 있다.
+  Widget _challengeList() {
+    final list = _challenges;
+    if (_challengesFailed) {
+      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('챌린지 기록을 불러오지 못했어요'),
+        TextButton(onPressed: _loadChallenges, child: const Text('다시 불러오기')),
+      ]));
+    }
+    if (list == null) return const Center(child: CircularProgressIndicator());
+    if (list.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('아직 함께한 챌린지가 없어요.\n챌린지 탭에서 친구와 시작해 보세요.',
+              textAlign: TextAlign.center, style: TextStyle(color: JdColors.subtle)),
+        ),
+      );
+    }
+    final now = DateTime.now();
+    return RefreshIndicator(
+      onRefresh: _loadChallenges,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        children: [
+          for (final c in list) _ChallengeTile(item: c, now: now, onTap: () => _openChallenge(c)),
+        ],
+      ),
     );
   }
 
@@ -211,6 +306,90 @@ class _RecordsScreenState extends State<RecordsScreen> {
 }
 
 const _dowNames = ['일', '월', '화', '수', '목', '금', '토'];
+
+String _md(DateTime t) => '${t.year}.${t.month}.${t.day}';
+
+/// 챌린지 기록 한 줄: 이름·회차·기간·결과.
+class _ChallengeTile extends StatelessWidget {
+  const _ChallengeTile({required this.item, required this.now, required this.onTap});
+
+  final ChallengeHistory item;
+  final DateTime now;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = item;
+    final status = c.statusAt(now);
+    final goal = c.goal;
+    final String state = switch (status) {
+      RoomStatus.recruiting => '친구 모집 중',
+      RoomStatus.scheduled => '시작 예정',
+      RoomStatus.active => '진행 중',
+      RoomStatus.finished => c.goalReachedAt != null ? '목표 달성' : '끝남',
+      RoomStatus.cancelled => '취소됨',
+      RoomStatus.expired => '모집 끝남',
+    };
+    final period = c.startsAt == null || c.endsAt == null
+        ? '${c.memberCount}명'
+        : '${_md(c.startsAt!.toLocal())} ~ ${_md(c.endsAt!.toLocal().subtract(const Duration(days: 1)))} · ${c.memberCount}명';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(challengeIcon(c.kind), color: JdColors.together),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${c.round > 1 ? '${c.round}회차 · ' : ''}${c.challengeName}',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(period, style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                    if (goal != null && goal > 0) ...[
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: (c.earned / goal).clamp(0.0, 1.0).toDouble(),
+                          minHeight: 5,
+                          backgroundColor: JdColors.panel,
+                          color: JdColors.together,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(state,
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: status == RoomStatus.finished && c.goalReachedAt != null
+                              ? JdColors.leaf
+                              : JdColors.subtle)),
+                  if (goal != null && goal > 0)
+                    Text('${c.earned}/$goal회', style: const TextStyle(fontSize: 12, color: JdColors.faint)),
+                ],
+              ),
+              const Icon(Icons.chevron_right, color: JdColors.faint),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _Stat extends StatelessWidget {
   const _Stat({required this.label, required this.value});
