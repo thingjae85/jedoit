@@ -60,7 +60,7 @@ class PixelBorder extends OutlinedBorder {
       canvas.save();
       canvas.clipPath(_path(rect));
       canvas.drawRect(Rect.fromLTRB(rect.left, rect.bottom - side.width - lip, rect.right, rect.bottom),
-          Paint()..color = const Color(0x38000000));
+          Paint()..color = const Color(0x1F3A2414));
       canvas.restore();
     }
     if (side.style == BorderStyle.none || side.width == 0) return;
@@ -228,7 +228,7 @@ class PixelCheck extends StatelessWidget {
         shape: PixelBorder(
           step: size / 12,
           steps: 1,
-          side: BorderSide(color: checked ? JdColors.leafDeep : JdColors.seamDark, width: 2),
+          side: BorderSide(color: checked ? JdColors.leafDeep : JdColors.seamDark, width: 1.5),
         ),
       ),
       child: checked
@@ -334,7 +334,7 @@ class GamePanel extends StatelessWidget {
     return Container(
       decoration: ShapeDecoration(
         color: lip,
-        shape: PixelBorder(step: step, steps: 2, side: const BorderSide(color: JdColors.outline, width: 2)),
+        shape: PixelBorder(step: step, steps: 2, side: const BorderSide(color: JdColors.edgeStrong, width: 1.5)),
       ),
       padding: EdgeInsets.fromLTRB(2, 2, 2, 2 + depth),
       child: Container(
@@ -418,7 +418,7 @@ class _GameButtonState extends State<GameButton> {
           child: Container(
             decoration: ShapeDecoration(
               color: lip,
-              shape: const PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.outline, width: 2)),
+              shape: const PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
             ),
             padding: EdgeInsets.fromLTRB(2, 2 + (pressed ? depth - 1 : 0), 2, 2 + (pressed ? 1 : depth)),
             child: Container(
@@ -533,9 +533,9 @@ class _TabBorder extends ShapeBorder {
   @override
   void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
     final paint = Paint()
-      ..color = JdColors.outline
+      ..color = JdColors.edgeStrong
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
+      ..strokeWidth = 1.5;
     final r = rect.deflate(1);
     final p = _path(r);
     if (on) {
@@ -635,7 +635,7 @@ class RoomNameButton extends StatelessWidget {
                     decoration: ShapeDecoration(
                       color: onDark ? JdColors.cream : JdColors.woodLight,
                       shape: const PixelBorder(
-                          step: 2, steps: 1, side: BorderSide(color: JdColors.outline, width: 1.5)),
+                          step: 2, steps: 1, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
                     ),
                     child: PixelPencil(size: size * 0.75),
                   ),
@@ -685,11 +685,11 @@ Future<String?> showRoomNameDialog(BuildContext context, {required String curren
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: JdColors.outline, width: 2),
+                  borderSide: BorderSide(color: JdColors.edgeStrong, width: 1.5),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
-                  borderSide: BorderSide(color: JdColors.outline, width: 2),
+                  borderSide: BorderSide(color: JdColors.edgeStrong, width: 1.5),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
@@ -814,7 +814,7 @@ class PixelBar extends StatelessWidget {
       padding: const EdgeInsets.all(2),
       decoration: const ShapeDecoration(
         color: JdColors.paperDeep,
-        shape: PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.seamDark, width: 1.5)),
+        shape: PixelBorder(step: 2, steps: 1, side: BorderSide(color: JdColors.edge, width: 1.5)),
       ),
       child: Align(
         alignment: Alignment.centerLeft,

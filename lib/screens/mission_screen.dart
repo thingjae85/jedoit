@@ -151,7 +151,7 @@ class _MissionScreenState extends State<MissionScreen> {
                 height: 64,
                 decoration: const ShapeDecoration(
                   color: JdColors.soloTint,
-                  shape: PixelBorder(step: 4, steps: 2, side: BorderSide(color: JdColors.outline, width: 2)),
+                  shape: PixelBorder(step: 4, steps: 2, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
                 ),
                 child: Icon(mission.icon, size: 32, color: JdColors.solo),
               ),

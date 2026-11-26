@@ -1187,7 +1187,7 @@ class _BuddyBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const shape = PixelBorder(step: 3, steps: 1, side: BorderSide(color: JdColors.outline, width: 2));
+    const shape = PixelBorder(step: 3, steps: 1, side: BorderSide(color: JdColors.edgeStrong, width: 1.5));
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -1378,7 +1378,7 @@ class _FriendRow extends StatelessWidget {
                 height: 52,
                 decoration: const ShapeDecoration(
                   color: JdColors.cream,
-                  shape: PixelBorder(step: 5.2, steps: 2, side: BorderSide(color: JdColors.seamDark, width: 2)),
+                  shape: PixelBorder(step: 5.2, steps: 2, side: BorderSide(color: JdColors.edgeStrong, width: 1.5)),
                 ),
                 child: const Icon(Icons.add, color: JdColors.woodText),
               ),

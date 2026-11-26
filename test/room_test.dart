@@ -694,40 +694,28 @@ void main() {
     await tester.tap(find.text('책 읽기'));
     await tester.pump();
     expect(find.widgetWithText(TextField, '책 10쪽 읽기'), findsOneWidget);
-    await tester.tap(find.text('+3일'));
+    await tester.tap(find.text('7일'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('하루 줄이기'));
     await tester.pump();
     await tester.tap(find.byTooltip('하루 줄이기'));
     await tester.pump();
     expect(find.textContaining('5일 동안'), findsOneWidget);
     expect(find.textContaining('1인당 목표 4회'), findsOneWidget);
-    await tester.tap(find.text('+한 달'));
+    await tester.tap(find.text('한 달'));
     await tester.pump();
-    await tester.tap(find.text('+한 달'));
-    await tester.pump();
-    expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '60일');
-    await tester.tap(find.text('3일로'));
-    await tester.pump();
-    await tester.tap(find.text('+5일'));
-    await tester.pump();
-    await tester.tap(find.byTooltip('하루 줄이기'));
-    await tester.pump();
-    await tester.tap(find.byTooltip('하루 줄이기'));
-    await tester.pump();
-    await tester.tap(find.byTooltip('하루 줄이기'));
-    await tester.pump();
-    expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '5일');
-    for (var i = 0; i < 6; i++) {
-      await tester.tap(find.byTooltip('하루 줄이기'));
+    for (var i = 0; i < 31; i++) {
+      await tester.tap(find.byTooltip('하루 늘리기'));
       await tester.pump();
     }
+    // 60일보다 늘어나지 않는다.
+    expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '60일');
+    await tester.tap(find.text('1일'));
+    await tester.pump();
     expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '1일');
+    expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.remove)).onPressed, isNull);
     expect(find.textContaining('1인당 목표 1회'), findsOneWidget);
-    await tester.tap(find.text('3일로'));
-    await tester.pump();
-    expect(tester.widget<Text>(find.byKey(const Key('daysText'))).data, '3일');
-    await tester.tap(find.text('+5일'));
-    await tester.pump();
-    await tester.tap(find.byTooltip('하루 줄이기'));
+    await tester.tap(find.text('7일'));
     await tester.pump();
     await tester.tap(find.byTooltip('하루 줄이기'));
     await tester.pump();

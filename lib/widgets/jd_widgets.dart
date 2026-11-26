@@ -74,7 +74,7 @@ class CheckSquare extends StatelessWidget {
         shape: PixelBorder(
             step: size / 8,
             steps: 1,
-            side: BorderSide(color: checked ? JdColors.outline : JdColors.seamDark, width: 2)),
+            side: const BorderSide(color: JdColors.edgeStrong, width: 1.5)),
       ),
       child: checked ? Icon(Icons.check_rounded, size: size * 0.7, color: Colors.white) : null,
     );
@@ -128,7 +128,7 @@ class DayBlob extends StatelessWidget {
         shape: PixelBorder(
             step: size / 10,
             steps: 1,
-            side: outlined ? const BorderSide(color: JdColors.outline, width: 2) : BorderSide.none),
+            side: outlined ? const BorderSide(color: JdColors.edgeStrong, width: 1.5) : BorderSide.none),
       ),
       child: full && !future
           ? Icon(Icons.check_rounded, size: size * 0.55, color: fg)

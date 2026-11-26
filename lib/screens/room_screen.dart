@@ -830,7 +830,7 @@ class _ProgressCard extends StatelessWidget {
 PixelBorder _dayShape(bool today) => PixelBorder(
     step: 2,
     steps: 1,
-    side: BorderSide(color: today ? JdColors.outline : JdColors.seam, width: today ? 2 : 1.5));
+    side: BorderSide(color: today ? JdColors.woodText : JdColors.edge, width: 1.5));
 
 /// 8일 이상 챌린지: 한 줄에 7칸씩 달력처럼. 모두 인증한 날은 진하게, 일부만 한 날은 옅게 칠한다.
 class _DayGrid extends StatelessWidget {
